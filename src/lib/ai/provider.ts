@@ -14,3 +14,14 @@ export interface GenerationProvider {
 export interface EmbeddingProvider {
   embedText(input: string): Promise<number[]>;
 }
+
+export interface TranscriptionProvider {
+  transcribeAudio(input: {
+    fileName: string;
+    contentType: string;
+    buffer: Buffer;
+  }): Promise<{
+    text: string;
+    provider: string;
+  }>;
+}

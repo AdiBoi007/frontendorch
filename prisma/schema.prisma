@@ -300,6 +300,7 @@ model Project {
   auditEvents   AuditEvent[]
   threads            CommunicationThread[]
   messages           CommunicationMessage[]
+  messageChunks      CommunicationMessageChunk[]
   socrateSessions    SocratesSession[]
   dashboardSnapshots DashboardSnapshot[]
 
@@ -575,6 +576,7 @@ model CommunicationThread {
   updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
   project           Project     @relation(fields: [projectId], references: [id])
   messages          CommunicationMessage[]
+  chunks            CommunicationMessageChunk[]
 
   @@unique([projectId, providerThreadId])
   @@map("communication_threads")
@@ -598,9 +600,33 @@ model CommunicationMessage {
   thread            CommunicationThread     @relation(fields: [threadId], references: [id])
   replyTo           CommunicationMessage?   @relation("message_reply", fields: [replyToMessageId], references: [id])
   replies           CommunicationMessage[]  @relation("message_reply")
+  chunks            CommunicationMessageChunk[]
 
   @@unique([threadId, providerMessageId])
   @@map("communication_messages")
+}
+
+model CommunicationMessageChunk {
+  id                String                    @id @default(uuid()) @db.Uuid
+  messageId         String                    @map("message_id") @db.Uuid
+  threadId          String                    @map("thread_id") @db.Uuid
+  projectId         String                    @map("project_id") @db.Uuid
+  chunkIndex        Int                       @map("chunk_index")
+  content           String
+  contextualContent String?                   @map("contextual_content")
+  lexicalContent    String                    @map("lexical_content")
+  embedding         Unsupported("vector(1536)")?
+  tokenCount        Int                       @map("token_count")
+  metadataJson      Json?                     @map("metadata_json")
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  message           CommunicationMessage      @relation(fields: [messageId], references: [id])
+  thread            CommunicationThread       @relation(fields: [threadId], references: [id])
+  project           Project                   @relation(fields: [projectId], references: [id])
+
+  @@unique([messageId, chunkIndex])
+  @@index([projectId, threadId])
+  @@index([messageId])
+  @@map("communication_message_chunks")
 }
 
 model AuditEvent {

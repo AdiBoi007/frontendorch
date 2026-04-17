@@ -52,12 +52,38 @@ export function registerWorker(
   return new Worker(
     queueName,
     async (job: { name: string; data: unknown }) => {
+      const startedAt = process.hrtime.bigint();
       const handler = handlers[job.name as JobName];
       if (!handler) {
         throw new Error(`No worker handler registered for ${job.name}`);
       }
 
-      await handler(job.data);
+      try {
+        await handler(job.data);
+        const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+        context.telemetry.increment("orchestra_jobs_total", {
+          job_name: job.name,
+          status: "completed"
+        });
+        context.telemetry.observeDuration("orchestra_job_duration_ms", durationMs, {
+          job_name: job.name
+        });
+        context.logger.info({ jobName: job.name, durationMs: Number(durationMs.toFixed(2)) }, "worker_job_completed");
+      } catch (error) {
+        const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+        context.telemetry.increment("orchestra_jobs_total", {
+          job_name: job.name,
+          status: "failed"
+        });
+        context.telemetry.observeDuration("orchestra_job_duration_ms", durationMs, {
+          job_name: job.name
+        });
+        context.logger.error(
+          { err: error, jobName: job.name, durationMs: Number(durationMs.toFixed(2)) },
+          "worker_job_failed"
+        );
+        throw error;
+      }
     },
     { connection }
   );

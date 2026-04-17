@@ -15,8 +15,10 @@
 
 import type { PrismaClient } from "@prisma/client";
 import type { EmbeddingProvider } from "../ai/provider.js";
+import { chunkText } from "./chunking.js";
 import type { RetrievalCandidate, RetrievalDomains } from "./types.js";
 import type { QueryIntent } from "./intent.js";
+import { AppError } from "../../app/errors.js";
 
 export interface HybridRetrievalInput {
   projectId: string;
@@ -397,17 +399,80 @@ async function retrieveDashboard(
 // ---------------------------------------------------------------------------
 async function retrieveMessages(
   prisma: PrismaClient,
+  embedProvider: EmbeddingProvider,
   projectId: string,
+  queryEmbedding: number[],
   queryTokens: string[],
+  topK: number,
   commWeight: number
 ): Promise<RetrievalCandidate[]> {
-  // Fall back to lexical-only since message_chunks embedding requires separate table.
   const messages = await prisma.communicationMessage.findMany({
-    where: { projectId },
+    where: { projectId, bodyText: { not: "" } },
     orderBy: { sentAt: "desc" },
-    take: 20,
+    take: Math.max(topK * 4, 20),
     include: { thread: true },
   });
+
+  if (messages.length === 0) {
+    return [];
+  }
+
+  await ensureCommunicationChunksIndexed(prisma, embedProvider, messages);
+
+  const chunks = await prisma.$queryRawUnsafe<
+    Array<{
+      message_id: string;
+      thread_id: string;
+      content: string;
+      contextual_content: string | null;
+      lexical_content: string;
+      sender_label: string;
+      subject: string | null;
+      vec_dist: number | null;
+    }>
+  >(
+    `
+    SELECT
+      cmc.message_id,
+      cmc.thread_id,
+      cmc.content,
+      cmc.contextual_content,
+      cmc.lexical_content,
+      cm.sender_label,
+      ct.subject,
+      (cmc.embedding <=> $2::vector) AS vec_dist
+    FROM communication_message_chunks cmc
+    JOIN communication_messages cm ON cm.id = cmc.message_id
+    JOIN communication_threads ct ON ct.id = cmc.thread_id
+    WHERE cmc.project_id = $1
+      AND cmc.embedding IS NOT NULL
+    ORDER BY cmc.embedding <=> $2::vector
+    LIMIT $3
+  `,
+    projectId,
+    `[${queryEmbedding.join(",")}]`,
+    topK * 3
+  );
+
+  if (chunks.length > 0) {
+    return chunks.map((chunk) => {
+      const lex = lexicalScore(chunk.lexical_content, queryTokens);
+      const vecSim = chunk.vec_dist != null ? Math.max(0, 1 - chunk.vec_dist) : 0.4;
+      return {
+        id: chunk.message_id,
+        sourceType: "communication_message" as const,
+        content: chunk.content,
+        contextualContent: chunk.contextual_content ?? undefined,
+        label: `${chunk.sender_label} (${chunk.subject ?? "thread"})`,
+        containerId: chunk.thread_id,
+        vectorScore: vecSim,
+        lexicalScore: lex,
+        finalScore: (0.6 * vecSim + 0.4 * lex) * commWeight,
+        isClientSafe: false,
+        isInternalOnly: true,
+      };
+    });
+  }
 
   return messages
     .map((msg) => {
@@ -424,7 +489,102 @@ async function retrieveMessages(
         isInternalOnly: true,
       };
     })
-    .filter((c) => c.finalScore > 0.05);
+    .filter((candidate) => candidate.finalScore > 0.05);
+}
+
+async function ensureCommunicationChunksIndexed(
+  prisma: PrismaClient,
+  embedProvider: EmbeddingProvider,
+  messages: Array<{
+    id: string;
+    projectId: string;
+    threadId: string;
+    senderLabel: string;
+    bodyText: string;
+    thread: { subject: string | null };
+  }>
+) {
+  const communicationMessageChunkDelegate = (prisma as PrismaClient & {
+    communicationMessageChunk: {
+      findMany: typeof prisma.documentChunk.findMany;
+      create: typeof prisma.documentChunk.create;
+    };
+  }).communicationMessageChunk;
+
+  const existingChunks = await communicationMessageChunkDelegate.findMany({
+    where: {
+      messageId: {
+        in: messages.map((message) => message.id)
+      }
+    },
+    select: {
+      messageId: true
+    }
+  });
+
+  const indexedMessageIds = new Set(existingChunks.map((chunk: { messageId: string }) => chunk.messageId));
+
+  for (const message of messages) {
+    if (indexedMessageIds.has(message.id)) {
+      continue;
+    }
+
+    const normalizedBody = message.bodyText.trim();
+    if (!normalizedBody) {
+      continue;
+    }
+
+    const chunks = chunkText({
+      content: normalizedBody,
+      documentTitle: message.thread.subject ?? `Thread ${message.threadId}`,
+      kind: "communication_message",
+      headingPath: [message.senderLabel],
+      pageNumber: null,
+      chunkSize: 220,
+      overlapSize: 40
+    });
+
+    for (const chunk of chunks) {
+      try {
+        const created = await communicationMessageChunkDelegate.create({
+          data: {
+            messageId: message.id,
+            threadId: message.threadId,
+            projectId: message.projectId,
+            chunkIndex: chunk.chunkIndex,
+            content: chunk.content,
+            contextualContent: chunk.contextualContent,
+            lexicalContent: chunk.contextualContent,
+            tokenCount: chunk.tokenCount,
+            metadataJson: {
+              senderLabel: message.senderLabel,
+              subject: message.thread.subject
+            }
+          }
+        });
+
+        const embedding = await embedProvider.embedText(chunk.contextualContent);
+        const vectorLiteral = `[${embedding.join(",")}]`;
+        await prisma.$executeRawUnsafe(
+          "UPDATE communication_message_chunks SET embedding = CAST($1 AS vector) WHERE id = CAST($2 AS uuid)",
+          vectorLiteral,
+          created.id
+        );
+      } catch (error) {
+        if (
+          error instanceof AppError ||
+          !(
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            (error as { code?: string }).code === "P2002"
+          )
+        ) {
+          throw error;
+        }
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -527,7 +687,17 @@ export async function hybridRetrieve(
   }
 
   if (input.domains.includeCommunications && !input.isClientContext) {
-    tasks.push(retrieveMessages(prisma, input.projectId, queryTokens, input.commWeight));
+    tasks.push(
+      retrieveMessages(
+        prisma,
+        _embedProvider,
+        input.projectId,
+        input.queryEmbedding,
+        queryTokens,
+        input.topK,
+        input.commWeight
+      )
+    );
   }
 
   const results = await Promise.allSettled(tasks);

@@ -222,6 +222,7 @@ Intended for:
 - `SENTRY_DSN`
 - `OTEL_EXPORTER_OTLP_ENDPOINT` optional
 - `METRICS_ENABLED`
+- `METRICS_TOKEN` optional
 
 ---
 
@@ -255,6 +256,7 @@ ANTHROPIC_API_KEY=...
 ANTHROPIC_MODEL_REASONING=claude-sonnet-4
 OPENAI_API_KEY=...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 
 RETRIEVAL_TOP_K=8
 RETRIEVAL_MIN_SCORE=0.2
@@ -262,6 +264,7 @@ RETRIEVAL_USE_HYBRID=true
 RETRIEVAL_DOC_WEIGHT=1.0
 RETRIEVAL_COMM_WEIGHT=0.8
 RETRIEVAL_ACCEPTED_TRUTH_BOOST=1.2
+METRICS_TOKEN=
 
 MAX_FILE_SIZE_BYTES=104857600
 URL_FETCH_MAX_BYTES=5242880
@@ -407,6 +410,7 @@ Capture:
 At minimum measure:
 - request latency by route
 - job duration by job type
+- voice transcription count and parse duration
 - Socrates first-token latency
 - Socrates total answer latency
 - document parse duration
@@ -414,6 +418,8 @@ At minimum measure:
 - connector sync duration
 - dashboard refresh duration
 - queue depth
+
+The current repo exposes a Prometheus-style `/metrics` endpoint from the API process. If `METRICS_TOKEN` is set, callers must send a matching `x-metrics-token` header.
 
 ## 12.4 Audit trail
 Ensure important actions land in `audit_events`, such as:

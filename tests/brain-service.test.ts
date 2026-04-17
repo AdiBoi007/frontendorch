@@ -29,6 +29,9 @@ describe("BrainService", () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(null)
       },
+      document: {
+        findMany: vi.fn().mockResolvedValue([])
+      },
       decisionRecord: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -48,7 +51,7 @@ describe("BrainService", () => {
       prisma,
       {} as any,
       { enqueue: vi.fn() } as any,
-      { ensureProjectAccess: vi.fn().mockResolvedValue(undefined), ensureProjectManager: vi.fn() } as any,
+      { ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "manager" }), ensureProjectManager: vi.fn() } as any,
       { record: vi.fn() } as any
     );
 
@@ -166,7 +169,7 @@ describe("BrainService", () => {
         generateObject: vi.fn(async ({ fallback }: { fallback: () => unknown }) => fallback())
       } as any,
       { enqueue: vi.fn() } as any,
-      { ensureProjectAccess: vi.fn().mockResolvedValue(undefined), ensureProjectManager: vi.fn() } as any,
+      { ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "manager" }), ensureProjectManager: vi.fn() } as any,
       { record: vi.fn() } as any
     );
 
@@ -179,5 +182,97 @@ describe("BrainService", () => {
         }
       }
     });
+  });
+
+  it("returns a client-safe current brain projection", async () => {
+    const prisma = {
+      artifactVersion: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "brain-2",
+            versionNumber: 4,
+            payloadJson: {
+              whatTheProductIs: "A product brain",
+              whoItIsFor: ["Managers", "Clients"],
+              mainFlows: ["Ingest docs", "Review changes"],
+              modules: ["Upload", "Brain"],
+              constraints: ["Immutable sources"],
+              integrations: [],
+              unresolvedAreas: ["Pending launch wording"],
+              acceptedDecisions: [{ decisionId: "decision-internal", title: "Internal decision", statement: "Internal statement" }],
+              recentAcceptedChanges: [{ proposalId: "proposal-internal", title: "Internal proposal", summary: "Internal summary" }],
+              evidenceRefs: [
+                { documentId: "doc-shared", excerpt: "Shared excerpt" },
+                { documentId: "doc-internal", excerpt: "Internal excerpt" }
+              ]
+            },
+            sourceRefsJson: [],
+            acceptedAt: new Date("2026-01-01T00:00:00.000Z"),
+            createdAt: new Date("2026-01-01T00:00:00.000Z")
+          })
+          .mockResolvedValueOnce({
+            id: "source-2",
+            versionNumber: 2,
+            payloadJson: {
+              projectSummary: "Internal source package",
+              actors: ["Manager"],
+              features: ["Upload"],
+              constraints: [],
+              integrations: [],
+              contradictions: [],
+              unknowns: [],
+              risks: [],
+              sourceConfidence: 0.9,
+              evidenceRefs: []
+            }
+          })
+          .mockResolvedValueOnce({
+            id: "brief-2",
+            versionNumber: 2,
+            payloadJson: {
+              summary: "Internal brief",
+              targetUsers: ["Manager"],
+              flows: ["Upload"],
+              scope: ["Upload"],
+              constraints: [],
+              integrations: [],
+              unresolvedDecisions: [],
+              assumptions: [],
+              risks: [],
+              evidenceRefs: []
+            }
+          })
+      },
+      document: {
+        findMany: vi.fn().mockResolvedValue([{ id: "doc-shared" }])
+      },
+      decisionRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "decision-1", title: "Internal decision", statement: "Internal", status: "accepted" }
+        ])
+      },
+      specChangeProposal: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "proposal-1", title: "Internal proposal", summary: "Hidden", acceptedAt: new Date(), decisionRecordId: null }
+        ])
+      }
+    } as any;
+
+    const service = new BrainService(
+      prisma,
+      {} as any,
+      { enqueue: vi.fn() } as any,
+      { ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "client" }), ensureProjectManager: vi.fn() } as any,
+      { record: vi.fn() } as any
+    );
+
+    const result = await service.getCurrentBrain("project-1", "client-1");
+
+    expect(result.sourcePackage).toBeNull();
+    expect(result.clarifiedBrief).toBeNull();
+    expect(result.acceptedDecisions).toEqual([]);
+    expect(result.recentAcceptedChanges).toEqual([]);
+    expect(result.currentBrain?.payload.evidenceRefs).toEqual([{ documentId: "doc-shared", excerpt: "Shared excerpt" }]);
   });
 });

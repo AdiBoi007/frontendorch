@@ -1,15 +1,17 @@
 import { getEnv } from "./config/env.js";
 import { createPrismaClient } from "./db/prisma.js";
-import { createEmbeddingProvider, createGenerationProvider } from "./lib/ai/index.js";
+import { createEmbeddingProvider, createGenerationProvider, createTranscriptionProvider } from "./lib/ai/index.js";
 import { registerWorker } from "./lib/jobs/queue.js";
 import { JobNames } from "./lib/jobs/types.js";
 import { createLogger } from "./lib/logging/logger.js";
+import { TelemetryService } from "./lib/observability/telemetry.js";
 import { createStorageDriver } from "./lib/storage/index.js";
 import { buildContext } from "./setup-context.js";
 
 const env = getEnv();
 const prisma = createPrismaClient();
 const logger = createLogger(env.LOG_LEVEL);
+const telemetry = new TelemetryService();
 
 const context = buildContext({
   env,
@@ -17,7 +19,9 @@ const context = buildContext({
   logger,
   storage: createStorageDriver(env),
   generationProvider: createGenerationProvider(env),
-  embeddingProvider: createEmbeddingProvider(env)
+  embeddingProvider: createEmbeddingProvider(env),
+  transcriptionProvider: createTranscriptionProvider(env),
+  telemetry
 });
 
 registerWorker(context, `${env.QUEUE_PREFIX}-jobs`, {
@@ -58,3 +62,5 @@ registerWorker(context, `${env.QUEUE_PREFIX}-jobs`, {
     await context.services.socratesService.precomputeSuggestions(projectId, sessionId);
   }
 });
+
+logger.info({ queuePrefix: env.QUEUE_PREFIX }, "worker_started");

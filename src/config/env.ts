@@ -32,6 +32,7 @@ const envSchema = z.object({
   ANTHROPIC_MODEL_REASONING: z.string().default("claude-3-7-sonnet-latest"),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+  OPENAI_TRANSCRIPTION_MODEL: z.string().default("gpt-4o-mini-transcribe"),
   RETRIEVAL_TOP_K: z.coerce.number().int().positive().default(8),
   RETRIEVAL_MIN_SCORE: z.coerce.number().default(0.2),
   RETRIEVAL_USE_HYBRID: z
@@ -40,7 +41,8 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   RETRIEVAL_DOC_WEIGHT: z.coerce.number().default(1),
   RETRIEVAL_COMM_WEIGHT: z.coerce.number().default(0.8),
-  RETRIEVAL_ACCEPTED_TRUTH_BOOST: z.coerce.number().default(1.2)
+  RETRIEVAL_ACCEPTED_TRUTH_BOOST: z.coerce.number().default(1.2),
+  METRICS_TOKEN: z.string().optional()
 }).superRefine((value, context) => {
   if (value.STORAGE_DRIVER === "s3") {
     for (const field of ["S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"] as const) {

@@ -105,20 +105,29 @@ function createContext() {
       JWT_REFRESH_TTL: "30d",
       PASSWORD_HASH_COST: 12,
       ANTHROPIC_MODEL_REASONING: "mock",
+      OPENAI_TRANSCRIPTION_MODEL: "mock-transcribe",
       OPENAI_EMBEDDING_MODEL: "mock",
       RETRIEVAL_TOP_K: 8,
       RETRIEVAL_MIN_SCORE: 0.2,
       RETRIEVAL_USE_HYBRID: true,
       RETRIEVAL_DOC_WEIGHT: 1,
       RETRIEVAL_COMM_WEIGHT: 0.8,
-      RETRIEVAL_ACCEPTED_TRUTH_BOOST: 1.2
+      RETRIEVAL_ACCEPTED_TRUTH_BOOST: 1.2,
+      METRICS_TOKEN: undefined
     },
     logger: pino({ enabled: false }),
     prisma: {} as any,
     storage: {} as any,
     generationProvider: {} as any,
     embeddingProvider: {} as any,
+    transcriptionProvider: {} as any,
     jobs: { enqueue: vi.fn() },
+    telemetry: {
+      increment: vi.fn(),
+      observeDuration: vi.fn(),
+      setGauge: vi.fn(),
+      renderPrometheus: vi.fn(() => "")
+    } as any,
     services: {
       authService,
       projectService,
@@ -197,5 +206,22 @@ describe("route contracts", () => {
     });
 
     expect(response.statusCode).toBe(403);
+  });
+
+  it("serves metrics when the token matches", async () => {
+    context.env.METRICS_TOKEN = "metrics-secret";
+    context.telemetry.renderPrometheus = vi.fn(() => "orchestra_http_requests_total 5");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/metrics",
+      headers: {
+        "x-metrics-token": "metrics-secret"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    expect(response.body).toContain("orchestra_http_requests_total");
   });
 });

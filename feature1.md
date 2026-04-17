@@ -25,12 +25,14 @@ Implemented scope:
 
 - auth and project creation
 - immutable document upload and document version creation
+- voice-note / audio upload via the same document ingestion endpoint with server-side transcription before parsing
 - local or S3-backed source storage
 - parsing of PDF, DOCX, TXT, Markdown, and pasted text
 - normalized sections with anchors, heading paths, and page data when available
 - chunk generation with contextual chunk text
 - embeddings persisted into `pgvector`
 - lexical retrieval material persisted in Postgres
+- communication-message chunking and embeddings for retrieval-ready message provenance
 - Source Package generation
 - Clarified Brief generation
 - Brain Graph generation plus normalized nodes/edges/section links
@@ -41,6 +43,8 @@ Implemented scope:
 - accepted proposal application into new current Product Brain truth
 - decision record creation for accepted decision changes
 - viewer payloads that can show change markers, decision ids, and message refs
+- client-safe current-brain and graph projections for client members
+- in-process telemetry and a Prometheus-style `/metrics` endpoint
 - worker/job infrastructure with BullMQ or inline execution
 
 ## 4. What Feature 1 is NOT
@@ -62,7 +66,7 @@ This implementation does not build:
 From a user perspective, Feature 1 enables:
 
 - creating a project
-- uploading PRDs, SRS files, notes, or pasted text
+- uploading PRDs, SRS files, notes, pasted text, or recorded voice-note style source input
 - having those sources parsed and indexed
 - generating a current Product Brain backed by evidence
 - viewing a structural graph of flows/modules/constraints
@@ -84,6 +88,7 @@ The main internal objects are:
 - `SpecChangeProposal`: manager-reviewed structured change request
 - `SpecChangeLink`: provenance join from a proposal to sections, nodes, and messages
 - `DecisionRecord`: accepted decision object, created automatically for accepted decision-change proposals
+- `CommunicationMessageChunk`: retrieval-ready semantic chunk for immutable communication evidence
 - `JobRun`: idempotency and execution tracking record for async jobs
 
 ## 7. Data model used by Feature 1
@@ -109,6 +114,7 @@ Core tables:
 - `decision_records`
 - `communication_threads`
 - `communication_messages`
+- `communication_message_chunks`
 - `audit_events`
 - `job_runs`
 
@@ -137,6 +143,7 @@ Key indexes and constraints:
 - unique chunk index per `(document_version_id, parse_revision, chunk_index)`
 - unique section key and anchor id per `(document_version_id, parse_revision, ...)`
 - unique proposal link rows per `(spec_change_proposal_id, link_type, link_ref_id, relationship)`
+- unique communication chunk rows per `(message_id, chunk_index)`
 
 ## 8. API routes used by Feature 1
 Auth:
@@ -192,6 +199,7 @@ Change proposals:
    - PDF: `src/lib/parsers/pdf.ts`
    - DOCX: `src/lib/parsers/docx.ts`
    - TXT/Markdown: `src/lib/parsers/text.ts`
+   - Audio: `src/lib/ai/openai-transcription.ts` or mock provider, then transcript is parsed as text
 8. Parsed sections are normalized into `document_sections`.
 9. Chunking builds contextual chunks from section text, not raw file bytes.
 10. Embedding writes vectors into `document_chunks.embedding`.
@@ -213,6 +221,7 @@ Inputs:
 
 - all `document_versions` in `status=ready`
 - only the sections matching each version’s current `parse_revision`
+- accepted communication evidence remains separate and immutable; it is not merged into source documents
 
 Behavior:
 
@@ -385,6 +394,7 @@ Viewer payload contains:
 - change markers for accepted proposals touching each section
 - linked decision ids from accepted proposals that created decision records
 - linked message/thread refs when available
+- client-safe document filtering: client members only receive payloads for `shared_with_client` documents
 
 Important behavior:
 
@@ -405,6 +415,9 @@ Implemented now for Feature 2 to build on later:
 - provenance metadata in chunk `metadata_json`
 - pgvector index
 - GIN lexical index
+- communication message chunk extraction
+- communication message chunk embeddings in `communication_message_chunks.embedding`
+- communication lexical material in `communication_message_chunks.lexical_content`
 
 Chunk contextual text is built in `src/lib/retrieval/chunking.ts` from:
 
@@ -515,11 +528,15 @@ Covered now:
 - stale parse revision skipping
 - monotonic chunk indexes across sections
 - viewer payload linkage for change markers, decisions, and messages
+- client-safe document filtering
+- audio transcription ingestion for voice-note style uploads
 - invalid proposal link rejection
 - automatic decision record creation on accepted decision changes
 - idempotent accepted-change reapplication
 - current brain read model contents
+- client-safe current brain projection
 - route contracts for auth, project creation, viewer payload, and manager-only change acceptance
+- metrics route contract
 
 ## 24. Production-readiness notes
 Production hardening done in this repo:
@@ -532,6 +549,9 @@ Production hardening done in this repo:
 - generation jobs are signature-based and retry-safe
 - provenance joins are explicit and unique
 - doc reprocessing preserves historical parse evidence
+- voice uploads are transcribed through a provider abstraction before parse normalization
+- client members receive formal server-side filtered document and truth projections
+- request and job telemetry are exported through `/metrics`
 
 Operational note:
 
@@ -580,6 +600,7 @@ Supporting libs:
 
 - `src/lib/parsers/*`
 - `src/lib/retrieval/chunking.ts`
+- `src/lib/observability/telemetry.ts`
 - `src/lib/jobs/keys.ts`
 - `src/lib/jobs/queue.ts`
 - `src/lib/storage/*`
@@ -596,6 +617,7 @@ Feature 2 should build on:
 - `brain_nodes`, `brain_edges`, `brain_section_links`
 - `spec_change_proposals`, `spec_change_links`
 - `communication_messages`
+- `communication_message_chunks`
 
 Socrates can use these to:
 
@@ -608,7 +630,7 @@ Socrates can use these to:
 - No full Socrates answer orchestration yet
 - No retrieval query API yet
 - No connector ingestion pipeline for Slack/Gmail/WhatsApp yet
-- No client-filtered views yet
+- No full client-facing derived product surface beyond the current client-safe brain/graph filtering
 - No Dashboard routes yet
 - No artifact diff API yet
 - No real Postgres-backed end-to-end integration harness in tests yet; current tests are service and route contract level

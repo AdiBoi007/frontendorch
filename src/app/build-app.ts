@@ -46,6 +46,19 @@ export async function buildApp(context: AppContext) {
     timestamp: new Date().toISOString()
   }));
 
+  app.get("/metrics", async (request, reply) => {
+    const configuredToken = context.env.METRICS_TOKEN?.trim();
+    if (configuredToken) {
+      const providedToken = request.headers["x-metrics-token"]?.toString();
+      if (providedToken !== configuredToken) {
+        throw app.httpErrors.forbidden("Metrics access denied");
+      }
+    }
+
+    reply.header("Content-Type", "text/plain; version=0.0.4");
+    return context.telemetry.renderPrometheus();
+  });
+
   await app.register(registerAuthRoutes, { prefix: "/v1/auth" });
   await app.register(registerProjectRoutes, { prefix: "/v1" });
   await app.register(registerDocumentRoutes, { prefix: "/v1" });

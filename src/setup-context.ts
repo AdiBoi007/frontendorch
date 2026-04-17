@@ -1,8 +1,9 @@
 import type { Logger } from "pino";
 import type { PrismaClient } from "@prisma/client";
 import type { AppEnv } from "./config/env.js";
-import type { EmbeddingProvider, GenerationProvider } from "./lib/ai/provider.js";
+import type { EmbeddingProvider, GenerationProvider, TranscriptionProvider } from "./lib/ai/provider.js";
 import { BullMqDispatcher, InlineJobDispatcher } from "./lib/jobs/queue.js";
+import type { TelemetryService } from "./lib/observability/telemetry.js";
 import type { StorageDriver } from "./lib/storage/types.js";
 import { AuditService } from "./modules/audit/service.js";
 import { AuthService } from "./modules/auth/service.js";
@@ -20,6 +21,8 @@ export function buildContext(input: {
   storage: StorageDriver;
   generationProvider: GenerationProvider;
   embeddingProvider: EmbeddingProvider;
+  transcriptionProvider: TranscriptionProvider;
+  telemetry: TelemetryService;
 }): AppContext {
   const auditService = new AuditService(input.prisma);
   const projectService = new ProjectService(input.prisma, auditService);
@@ -35,8 +38,10 @@ export function buildContext(input: {
     input.storage,
     jobs,
     input.embeddingProvider,
+    input.transcriptionProvider,
     projectService,
-    auditService
+    auditService,
+    input.telemetry
   );
   const changeProposalService = new ChangeProposalService(
     input.prisma,

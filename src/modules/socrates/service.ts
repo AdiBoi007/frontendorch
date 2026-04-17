@@ -26,9 +26,11 @@ import { AuditService } from "../audit/service.js";
 import { ProjectService } from "../projects/service.js";
 import {
   answerSchema,
+  citationSchema,
   createSessionBodySchema,
   patchContextBodySchema,
   type AnswerSchema,
+  type CitationSchema,
   type OpenTargetRef,
   type PageContext,
 } from "./schemas.js";
@@ -334,6 +336,8 @@ export class SocratesService {
         isClientContext,
       });
 
+      const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+
       // 4. Load recent conversation history.
       const history = await this.loadHistory(sessionId, MAX_HISTORY_TURNS);
 
@@ -378,9 +382,17 @@ export class SocratesService {
         parsedAnswer = await this.retryStructuredAnswer(userPrompt, fullText);
       }
 
+      const validatedCitations = await this.validateCitations(
+        parsedAnswer.citations,
+        candidateIds,
+        projectId,
+        isClientContext
+      );
+
       // 8. Validate open-targets (ensure they exist and belong to this project).
       const validatedTargets = await this.validateOpenTargets(
         parsedAnswer.open_targets,
+        validatedCitations,
         projectId,
         isClientContext
       );
@@ -394,7 +406,7 @@ export class SocratesService {
         });
 
         // Persist citations.
-        for (const [index, citation] of parsedAnswer.citations.entries()) {
+        for (const [index, citation] of validatedCitations.entries()) {
           await tx.socratesCitation.create({
             data: {
               assistantMessageId: assistantMessage.id,
@@ -439,7 +451,7 @@ export class SocratesService {
           sessionId,
           intent,
           pageContext: session.pageContext,
-          citationCount: parsedAnswer.citations.length,
+          citationCount: validatedCitations.length,
           openTargetCount: validatedTargets.length,
         },
       });
@@ -447,7 +459,7 @@ export class SocratesService {
       sendEvent("done", {
         assistantMessageId: assistantMessage.id,
         answer_md: parsedAnswer.answer_md,
-        citations: parsedAnswer.citations,
+        citations: validatedCitations,
         open_targets: validatedTargets,
         suggested_prompts: parsedAnswer.suggested_prompts,
         confidence: parsedAnswer.confidence,
@@ -549,6 +561,7 @@ export class SocratesService {
 
   private async validateOpenTargets(
     rawTargets: OpenTargetRef[],
+    citations: CitationSchema[],
     projectId: string,
     isClientContext: boolean
   ): Promise<OpenTargetRef[]> {
@@ -556,7 +569,7 @@ export class SocratesService {
 
     for (const target of rawTargets) {
       try {
-        const ok = await this.checkTargetExists(target, projectId, isClientContext);
+        const ok = await this.checkTargetExists(target, citations, projectId, isClientContext);
         if (ok) valid.push(target);
       } catch {
         // Invalid target — skip it per spec.
@@ -568,6 +581,7 @@ export class SocratesService {
 
   private async checkTargetExists(
     target: OpenTargetRef,
+    citations: CitationSchema[],
     projectId: string,
     isClientContext: boolean
   ): Promise<boolean> {
@@ -588,44 +602,162 @@ export class SocratesService {
         const section = sections.find((candidate) => candidate.parseRevision === candidate.documentVersion.parseRevision);
         if (!section) return false;
         if (isClientContext && section.documentVersion.document.visibility === "internal") return false;
-        return true;
+        return citations.some(
+          (citation) => citation.type === "document_section" && citation.refId === section.id
+        );
       }
       case "message": {
         if (isClientContext) return false;
         const msg = await this.prisma.communicationMessage.findFirst({
           where: { id: target.targetRef.messageId, projectId },
         });
-        return Boolean(msg);
+        if (!msg) return false;
+        return citations.some((citation) => citation.type === "message" && citation.refId === msg.id);
       }
       case "thread": {
         if (isClientContext) return false;
         const thread = await this.prisma.communicationThread.findFirst({
           where: { id: target.targetRef.threadId, projectId },
         });
-        return Boolean(thread);
+        if (!thread) return false;
+        const citedMessage = await this.prisma.communicationMessage.findFirst({
+          where: { threadId: thread.id, projectId, id: { in: citations.filter((citation) => citation.type === "message").map((citation) => citation.refId) } }
+        });
+        return Boolean(citedMessage);
       }
       case "brain_node": {
         const node = await this.prisma.brainNode.findFirst({
           where: { id: target.targetRef.nodeId, projectId },
         });
-        return Boolean(node);
+        if (!node) return false;
+        if (isClientContext) {
+          const links = await this.prisma.brainSectionLink.findMany({
+            where: { projectId, brainNodeId: node.id },
+            include: {
+              documentSection: {
+                include: {
+                  documentVersion: {
+                    include: { document: true }
+                  }
+                }
+              }
+            }
+          });
+          const hasOnlySharedEvidence =
+            links.length > 0 &&
+            links.every((link) => link.documentSection.documentVersion.document.visibility === "shared_with_client");
+          if (!hasOnlySharedEvidence) {
+            return false;
+          }
+        }
+        return citations.some((citation) => citation.type === "brain_node" && citation.refId === node.id);
       }
       case "change_proposal": {
         if (isClientContext) return false;
         const proposal = await this.prisma.specChangeProposal.findFirst({
           where: { id: target.targetRef.proposalId, projectId },
         });
-        return Boolean(proposal);
+        if (!proposal) return false;
+        return citations.some((citation) => citation.type === "change_proposal" && citation.refId === proposal.id);
       }
       case "decision_record": {
         if (isClientContext) return false;
         const decision = await this.prisma.decisionRecord.findFirst({
           where: { id: target.targetRef.decisionId, projectId },
         });
-        return Boolean(decision);
+        if (!decision) return false;
+        return citations.some((citation) => citation.type === "decision_record" && citation.refId === decision.id);
       }
       case "dashboard_filter":
-        return true; // Always passthrough — no DB entity to validate.
+        return citations.some((citation) => citation.type === "dashboard_snapshot");
+      default:
+        return false;
+    }
+  }
+
+  private async validateCitations(
+    rawCitations: CitationSchema[],
+    candidateIds: Set<string>,
+    projectId: string,
+    isClientContext: boolean
+  ): Promise<CitationSchema[]> {
+    const valid: CitationSchema[] = [];
+
+    for (const rawCitation of rawCitations) {
+      const citation = citationSchema.parse(rawCitation);
+      if (!candidateIds.has(citation.refId)) {
+        continue;
+      }
+      if (await this.citationExists(citation, projectId, isClientContext)) {
+        valid.push(citation);
+      }
+    }
+
+    return valid;
+  }
+
+  private async citationExists(
+    citation: CitationSchema,
+    projectId: string,
+    isClientContext: boolean
+  ): Promise<boolean> {
+    switch (citation.type) {
+      case "document_section": {
+        const section = await this.prisma.documentSection.findFirst({
+          where: { id: citation.refId, projectId },
+          include: {
+            documentVersion: {
+              include: { document: true }
+            }
+          }
+        });
+        if (!section) return false;
+        return !isClientContext || section.documentVersion.document.visibility === "shared_with_client";
+      }
+      case "document_chunk": {
+        const chunk = await this.prisma.documentChunk.findFirst({
+          where: { id: citation.refId, projectId },
+          include: {
+            documentVersion: {
+              include: { document: true }
+            }
+          }
+        });
+        if (!chunk) return false;
+        return !isClientContext || chunk.documentVersion.document.visibility === "shared_with_client";
+      }
+      case "message":
+        return !isClientContext && Boolean(await this.prisma.communicationMessage.findFirst({ where: { id: citation.refId, projectId } }));
+      case "brain_node": {
+        const node = await this.prisma.brainNode.findFirst({
+          where: { id: citation.refId, projectId }
+        });
+        if (!node) return false;
+        if (!isClientContext) return true;
+        const links = await this.prisma.brainSectionLink.findMany({
+          where: { projectId, brainNodeId: node.id },
+          include: {
+            documentSection: {
+              include: {
+                documentVersion: {
+                  include: { document: true }
+                }
+              }
+            }
+          }
+        });
+        return links.length > 0 && links.every((link) => link.documentSection.documentVersion.document.visibility === "shared_with_client");
+      }
+      case "product_brain":
+        return !isClientContext && Boolean(await this.prisma.artifactVersion.findFirst({
+          where: { id: citation.refId, projectId, artifactType: "product_brain", status: "accepted" }
+        }));
+      case "change_proposal":
+        return !isClientContext && Boolean(await this.prisma.specChangeProposal.findFirst({ where: { id: citation.refId, projectId } }));
+      case "decision_record":
+        return !isClientContext && Boolean(await this.prisma.decisionRecord.findFirst({ where: { id: citation.refId, projectId } }));
+      case "dashboard_snapshot":
+        return Boolean(await this.prisma.dashboardSnapshot.findFirst({ where: { id: citation.refId, projectId } }));
       default:
         return false;
     }

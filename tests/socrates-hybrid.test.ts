@@ -127,4 +127,72 @@ describe("hybridRetrieve", () => {
       })
     );
   });
+
+  it("indexes communication messages into semantic chunks before retrieval", async () => {
+    const communicationMessageChunk = {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: "chunk-1" })
+    };
+    const prisma = {
+      communicationMessage: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "message-1",
+            projectId: "project-1",
+            threadId: "thread-1",
+            senderLabel: "Founder",
+            bodyText: "We should launch with a lightweight voice note input for early idea capture.",
+            thread: { subject: "Kickoff" }
+          }
+        ])
+      },
+      communicationMessageChunk,
+      $queryRawUnsafe: vi.fn().mockResolvedValue([
+        {
+          message_id: "message-1",
+          thread_id: "thread-1",
+          content: "voice note input for early idea capture",
+          contextual_content: "Kickoff Founder voice note input for early idea capture",
+          lexical_content: "Kickoff Founder voice note input for early idea capture",
+          sender_label: "Founder",
+          subject: "Kickoff",
+          vec_dist: 0.08
+        }
+      ]),
+      $executeRawUnsafe: vi.fn().mockResolvedValue(1)
+    } as any;
+
+    const embedProvider = {
+      embedText: vi.fn().mockResolvedValue([0.1, 0.2, 0.3])
+    } as any;
+
+    const result = await hybridRetrieve(prisma, embedProvider, "org-1", {
+      projectId: "project-1",
+      query: "did anyone mention voice notes?",
+      queryEmbedding: [0.1, 0.2, 0.3],
+      intent: "provenance",
+      domains: {
+        includeDocuments: false,
+        includeBrainNodes: false,
+        includeProductBrain: false,
+        includeChanges: false,
+        includeDecisions: false,
+        includeDashboard: false,
+        includeCommunications: true
+      },
+      topK: 5,
+      minScore: 0,
+      isClientContext: false,
+      acceptedTruthBoost: 1.2,
+      docWeight: 1,
+      commWeight: 0.8
+    });
+
+    expect(communicationMessageChunk.create).toHaveBeenCalled();
+    expect(embedProvider.embedText).toHaveBeenCalled();
+    expect(result[0]).toMatchObject({
+      id: "message-1",
+      sourceType: "communication_message"
+    });
+  });
 });

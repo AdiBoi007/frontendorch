@@ -66,7 +66,7 @@ export class BrainService {
   }
 
   async getCurrentBrain(projectId: string, actorUserId: string) {
-    await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
 
     const [projectBrain, sourcePackage, clarifiedBrief, acceptedDecisions, recentAcceptedChanges] = await Promise.all([
       this.getLatestAcceptedArtifact(projectId, "product_brain"),
@@ -84,20 +84,35 @@ export class BrainService {
     ]);
 
     const currentPayload = projectBrain?.payloadJson ? productBrainSchema.parse(projectBrain.payloadJson) : null;
+    const isClientRole = member.projectRole === "client";
+    const clientSafeSourceRefs = currentPayload
+      ? await this.filterEvidenceRefsForClient(projectId, currentPayload.evidenceRefs)
+      : [];
+    const clientSafePayload = currentPayload
+      ? {
+          ...currentPayload,
+          acceptedDecisions: [],
+          recentAcceptedChanges: [],
+          evidenceRefs: clientSafeSourceRefs
+        }
+      : null;
 
     return {
       currentBrain:
-        projectBrain && currentPayload
+        projectBrain && (isClientRole ? clientSafePayload : currentPayload)
           ? {
               artifactId: projectBrain.id,
               versionNumber: projectBrain.versionNumber,
               acceptedAt: projectBrain.acceptedAt,
               createdAt: projectBrain.createdAt,
-              payload: currentPayload,
-              sourceRefs: projectBrain.sourceRefsJson
+              payload: isClientRole ? clientSafePayload : currentPayload,
+              sourceRefs: isClientRole ? clientSafeSourceRefs : projectBrain.sourceRefsJson
             }
           : null,
       sourcePackage:
+        isClientRole
+          ? null
+          :
         sourcePackage && sourcePackage.payloadJson
           ? {
               artifactId: sourcePackage.id,
@@ -106,6 +121,9 @@ export class BrainService {
             }
           : null,
       clarifiedBrief:
+        isClientRole
+          ? null
+          :
         clarifiedBrief && clarifiedBrief.payloadJson
           ? {
               artifactId: clarifiedBrief.id,
@@ -113,9 +131,11 @@ export class BrainService {
               payload: clarifiedBriefSchema.parse(clarifiedBrief.payloadJson)
             }
           : null,
-      acceptedDecisions,
-      unresolvedAreas: currentPayload?.unresolvedAreas ?? [],
-      recentAcceptedChanges: recentAcceptedChanges.map((proposal) => ({
+      acceptedDecisions: isClientRole ? [] : acceptedDecisions,
+      unresolvedAreas: (isClientRole ? clientSafePayload : currentPayload)?.unresolvedAreas ?? [],
+      recentAcceptedChanges: isClientRole
+        ? []
+        : recentAcceptedChanges.map((proposal) => ({
         proposalId: proposal.id,
         title: proposal.title,
         summary: proposal.summary,
@@ -131,15 +151,28 @@ export class BrainService {
   }
 
   async getBrainVersions(projectId: string, actorUserId: string) {
-    await this.projectService.ensureProjectAccess(projectId, actorUserId);
-    return this.prisma.artifactVersion.findMany({
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const versions = await this.prisma.artifactVersion.findMany({
       where: { projectId, artifactType: "product_brain" },
       orderBy: { versionNumber: "desc" }
     });
+
+    if (member.projectRole !== "client") {
+      return versions;
+    }
+
+    return versions.map((version) => ({
+      id: version.id,
+      artifactType: version.artifactType,
+      versionNumber: version.versionNumber,
+      status: version.status,
+      createdAt: version.createdAt,
+      acceptedAt: version.acceptedAt
+    }));
   }
 
   async getCurrentGraph(projectId: string, actorUserId: string) {
-    await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     const graphArtifact = await this.getLatestAcceptedArtifact(projectId, "brain_graph");
     if (!graphArtifact) {
       throw new AppError(404, "Brain graph not found", "brain_graph_not_found");
@@ -157,6 +190,31 @@ export class BrainService {
         where: { artifactVersionId: graphArtifact.id }
       })
     ]);
+
+    if (member.projectRole === "client") {
+      const clientSafeNodeIds = await this.getClientSafeNodeIds(projectId, graphArtifact.id);
+      const filteredNodes = nodes.filter((node) => clientSafeNodeIds.has(node.id));
+      const filteredEdges = edges.filter(
+        (edge) => clientSafeNodeIds.has(edge.fromNodeId) && clientSafeNodeIds.has(edge.toNodeId)
+      );
+      const filteredSectionLinks = sectionLinks.filter((link) => clientSafeNodeIds.has(link.brainNodeId));
+      const graph = brainGraphSchema.parse(graphArtifact.payloadJson);
+      const allowedNodeKeys = new Set(filteredNodes.map((node) => node.nodeKey));
+
+      return {
+        artifact: graphArtifact,
+        graph: {
+          ...graph,
+          nodes: graph.nodes.filter((node) => allowedNodeKeys.has(node.nodeKey)),
+          edges: graph.edges.filter(
+            (edge) => allowedNodeKeys.has(edge.fromNodeKey) && allowedNodeKeys.has(edge.toNodeKey)
+          )
+        },
+        nodes: filteredNodes,
+        edges: filteredEdges,
+        sectionLinks: filteredSectionLinks
+      };
+    }
 
     return {
       artifact: graphArtifact,
@@ -891,5 +949,56 @@ export class BrainService {
     return sections.filter(
       (section) => parseRevisionByVersion.get(section.documentVersionId) === section.parseRevision
     );
+  }
+
+  private async filterEvidenceRefsForClient(projectId: string, evidenceRefs: EvidenceRef[]) {
+    const visibleDocumentIds = new Set(
+      (
+        await this.prisma.document.findMany({
+          where: {
+            projectId,
+            visibility: "shared_with_client"
+          },
+          select: {
+            id: true
+          }
+        })
+      ).map((document) => document.id)
+    );
+
+    return evidenceRefs.filter((ref) => !ref.documentId || visibleDocumentIds.has(ref.documentId));
+  }
+
+  private async getClientSafeNodeIds(projectId: string, artifactVersionId: string) {
+    const links = await this.prisma.brainSectionLink.findMany({
+      where: { projectId, artifactVersionId },
+      include: {
+        documentSection: {
+          include: {
+            documentVersion: {
+              include: {
+                document: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const visibilityByNodeId = new Map<string, Set<string>>();
+    for (const link of links) {
+      const visibilities = visibilityByNodeId.get(link.brainNodeId) ?? new Set<string>();
+      visibilities.add(link.documentSection.documentVersion.document.visibility);
+      visibilityByNodeId.set(link.brainNodeId, visibilities);
+    }
+
+    const safeNodeIds = new Set<string>();
+    for (const [nodeId, visibilities] of visibilityByNodeId.entries()) {
+      if (visibilities.size > 0 && Array.from(visibilities).every((value) => value === "shared_with_client")) {
+        safeNodeIds.add(nodeId);
+      }
+    }
+
+    return safeNodeIds;
   }
 }

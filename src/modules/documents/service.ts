@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import type { PrismaClient } from "@prisma/client";
+import type { DocumentVisibility, PrismaClient } from "@prisma/client";
 import { AppError } from "../../app/errors.js";
 import type { EmbeddingProvider } from "../../lib/ai/provider.js";
+import type { TranscriptionProvider } from "../../lib/ai/provider.js";
 import { jobKeys } from "../../lib/jobs/keys.js";
 import type { JobDispatcher } from "../../lib/jobs/types.js";
 import { JobNames } from "../../lib/jobs/types.js";
 import { parseDocumentBuffer } from "../../lib/parsers/index.js";
+import { parseTextDocument } from "../../lib/parsers/text.js";
+import type { TelemetryService } from "../../lib/observability/telemetry.js";
 import { chunkText } from "../../lib/retrieval/chunking.js";
 import type { StorageDriver } from "../../lib/storage/types.js";
 import { toAnchorId } from "../../lib/utils/anchors.js";
@@ -47,8 +50,10 @@ export class DocumentService {
     private readonly storage: StorageDriver,
     private readonly jobs: JobDispatcher,
     private readonly embeddings: EmbeddingProvider,
+    private readonly transcriptionProvider: TranscriptionProvider,
     private readonly projectService: ProjectService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly telemetry: TelemetryService
   ) {}
 
   async uploadFile(input: UploadInput) {
@@ -206,9 +211,12 @@ export class DocumentService {
   }
 
   async listDocuments(projectId: string, actorUserId: string) {
-    await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     return this.prisma.document.findMany({
-      where: { projectId },
+      where: {
+        projectId,
+        ...(this.clientDocumentFilter(member.projectRole) ?? {})
+      },
       include: {
         versions: {
           take: 1,
@@ -224,11 +232,12 @@ export class DocumentService {
   }
 
   async getDocument(projectId: string, documentId: string, actorUserId: string) {
-    await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     return this.prisma.document.findFirstOrThrow({
       where: {
         id: documentId,
-        projectId
+        projectId,
+        ...(this.clientDocumentFilter(member.projectRole) ?? {})
       },
       include: {
         versions: {
@@ -244,12 +253,13 @@ export class DocumentService {
     actorUserId: string,
     opts: { page?: number; pageSize?: number } = {}
   ) {
-    await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
 
     const document = await this.prisma.document.findFirstOrThrow({
       where: {
         id: documentId,
-        projectId
+        projectId,
+        ...(this.clientDocumentFilter(member.projectRole) ?? {})
       }
     });
 
@@ -560,7 +570,7 @@ export class DocumentService {
 
     try {
       const buffer = await this.storage.getObject(version.fileKey);
-      const parsed = await parseDocumentBuffer(version.mimeType, buffer, version.document.title);
+      const parsed = await this.parseVersionContent(version.mimeType, buffer, version.document.title);
       const sections = ensureNonEmptySections(parsed.sections);
 
       if (sections.length === 0) {
@@ -898,5 +908,40 @@ export class DocumentService {
         lastError: error instanceof Error ? error.message : "Unknown error"
       }
     });
+  }
+
+  private clientDocumentFilter(projectRole: string) {
+    if (projectRole !== "client") {
+      return null;
+    }
+
+    return {
+      visibility: "shared_with_client" as DocumentVisibility
+    };
+  }
+
+  private async parseVersionContent(contentType: string, buffer: Buffer, title: string) {
+    const startedAt = process.hrtime.bigint();
+    try {
+      if (contentType.toLowerCase().startsWith("audio/")) {
+        const transcript = await this.transcriptionProvider.transcribeAudio({
+          fileName: title,
+          contentType,
+          buffer
+        });
+
+        this.telemetry.increment("orchestra_voice_transcriptions_total", {
+          provider: transcript.provider
+        });
+        return parseTextDocument(transcript.text);
+      }
+
+      return await parseDocumentBuffer(contentType, buffer, title);
+    } finally {
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      this.telemetry.observeDuration("orchestra_document_parse_duration_ms", durationMs, {
+        parser: contentType.toLowerCase().startsWith("audio/") ? "audio_transcription" : "document_parser"
+      });
+    }
   }
 }

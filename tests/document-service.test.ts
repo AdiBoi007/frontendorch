@@ -30,8 +30,10 @@ describe("DocumentService", () => {
       storage,
       { enqueue: vi.fn() } as any,
       { embedText: vi.fn() } as any,
+      { transcribeAudio: vi.fn() } as any,
       { ensureProjectManager: vi.fn(), ensureProjectAccess: vi.fn() } as any,
-      { record: vi.fn() } as any
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
     );
 
     const result = await service.processDocumentVersion("ver-1", 1);
@@ -93,8 +95,10 @@ describe("DocumentService", () => {
       {} as any,
       jobs as any,
       { embedText: vi.fn() } as any,
+      { transcribeAudio: vi.fn() } as any,
       { ensureProjectManager: vi.fn(), ensureProjectAccess: vi.fn() } as any,
-      { record: vi.fn() } as any
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
     );
 
     await service.chunkDocumentVersion("ver-1", 1);
@@ -179,8 +183,10 @@ describe("DocumentService", () => {
       {} as any,
       { enqueue: vi.fn() } as any,
       { embedText: vi.fn() } as any,
-      { ensureProjectManager: vi.fn(), ensureProjectAccess: vi.fn().mockResolvedValue(undefined) } as any,
-      { record: vi.fn() } as any
+      { transcribeAudio: vi.fn() } as any,
+      { ensureProjectManager: vi.fn(), ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "manager" }) } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
     );
 
     const payload = await service.getViewerPayload("project-1", "doc-1", "user-1");
@@ -196,5 +202,101 @@ describe("DocumentService", () => {
       changeProposalId: "proposal-1",
       status: "accepted"
     });
+  });
+
+  it("filters document listing for client members to shared documents only", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const prisma = {
+      document: {
+        findMany
+      }
+    } as any;
+
+    const service = new DocumentService(
+      prisma,
+      {} as any,
+      { enqueue: vi.fn() } as any,
+      { embedText: vi.fn() } as any,
+      { transcribeAudio: vi.fn() } as any,
+      { ensureProjectManager: vi.fn(), ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "client" }) } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
+    );
+
+    await service.listDocuments("project-1", "client-1");
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          projectId: "project-1",
+          visibility: "shared_with_client"
+        })
+      })
+    );
+  });
+
+  it("transcribes audio uploads before creating sections", async () => {
+    const createSection = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      documentVersion: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: "ver-audio",
+          projectId: "project-1",
+          parseRevision: 1,
+          fileKey: "audio-key",
+          mimeType: "audio/mpeg",
+          document: {
+            title: "Founder note"
+          }
+        }),
+        update: vi.fn().mockResolvedValue(undefined),
+        updateMany: vi.fn().mockResolvedValue(undefined)
+      },
+      documentChunk: {
+        deleteMany: vi.fn().mockResolvedValue(undefined)
+      },
+      documentSection: {
+        deleteMany: vi.fn().mockResolvedValue(undefined),
+        create: createSection
+      },
+      jobRun: {
+        upsert: vi.fn().mockResolvedValue(undefined)
+      }
+    } as any;
+
+    const jobs = { enqueue: vi.fn().mockResolvedValue(undefined) };
+    const transcribeAudio = vi.fn().mockResolvedValue({
+      text: "# Vision\nVoice-captured product idea",
+      provider: "mock-transcription"
+    });
+    const telemetry = { increment: vi.fn(), observeDuration: vi.fn() };
+
+    const service = new DocumentService(
+      prisma,
+      { getObject: vi.fn().mockResolvedValue(Buffer.from("audio-bytes")) } as any,
+      jobs as any,
+      { embedText: vi.fn() } as any,
+      { transcribeAudio } as any,
+      { ensureProjectManager: vi.fn(), ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "manager" }) } as any,
+      { record: vi.fn() } as any,
+      telemetry as any
+    );
+
+    await service.processDocumentVersion("ver-audio", 1);
+
+    expect(transcribeAudio).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentType: "audio/mpeg"
+      })
+    );
+    expect(createSection).toHaveBeenCalled();
+    expect(telemetry.increment).toHaveBeenCalledWith("orchestra_voice_transcriptions_total", {
+      provider: "mock-transcription"
+    });
+    expect(jobs.enqueue).toHaveBeenCalledWith(
+      "chunk_document",
+      { documentVersionId: "ver-audio", parseRevision: 1 },
+      expect.any(String)
+    );
   });
 });
