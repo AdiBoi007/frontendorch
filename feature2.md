@@ -835,8 +835,12 @@ Feature 2 is a pure consumer of Feature 1's outputs. It does not write to any Fe
 
 ### Feature 3 — Live Doc Viewer
 - The `open_targets` returned by Socrates include `document_section` targets with `anchorId`.
-- Feature 3's viewer must support scrolling to an `anchorId` in the currently open document when triggered by a Socrates open-target action.
-- Citations of type `document_chunk` or `document_section` should highlight the relevant section in the viewer.
+- Feature 3's viewer now resolves those targets through:
+  - `GET /v1/projects/:projectId/documents/:documentId/view?versionId=...&anchorId=...`
+  - `GET /v1/projects/:projectId/documents/:documentId/view?highlightCitationId=...`
+  - `GET /v1/projects/:projectId/documents/:documentId/anchors/:anchorId`
+- Citations of type `document_chunk` or `document_section` highlight the relevant section through the viewer `highlight` block, with chunk citations resolving upward to the parent section.
+- `GET /v1/projects/:projectId/documents/:documentId/anchors/:anchorId/provenance` is the backend click-to-source contract for explaining where a cited section came from.
 - Feature 3 should update the Socrates session's `viewerState` (via `PATCH .../context`) when the user navigates to a new section, so subsequent Socrates answers are biased toward that section.
 
 ### Feature 4 — Dashboard

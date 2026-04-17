@@ -1,10 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
-import { authGuard, requireManager } from "../../app/auth.js";
+import { authGuard, requireManager, requireWorkspaceRole } from "../../app/auth.js";
 import {
   anchorParamsSchema,
+  anchorQuerySchema,
   documentParamsSchema,
+  documentSearchQuerySchema,
+  messageParamsSchema,
   multipartUploadMetadataSchema,
-  pastedTextUploadSchema
+  paginationQuerySchema,
+  pastedTextUploadSchema,
+  viewerQuerySchema
 } from "./schemas.js";
 
 export const registerDocumentRoutes: FastifyPluginAsync = async (app) => {
@@ -64,11 +69,13 @@ export const registerDocumentRoutes: FastifyPluginAsync = async (app) => {
     "/projects/:projectId/documents",
     authGuard(async (request) => {
       const projectId = documentParamsSchema.shape.projectId.parse((request.params as { projectId: string }).projectId);
-      const documents = await request.appContext.services.documentService.listDocuments(
+      const query = paginationQuerySchema.parse(request.query);
+      const result = await request.appContext.services.documentService.listDocuments(
         projectId,
-        request.authUser!.userId
+        request.authUser!.userId,
+        query
       );
-      return { data: documents, meta: null, error: null };
+      return { data: result.items, meta: result.meta, error: null };
     })
   );
 
@@ -89,10 +96,12 @@ export const registerDocumentRoutes: FastifyPluginAsync = async (app) => {
     "/projects/:projectId/documents/:documentId/view",
     authGuard(async (request) => {
       const params = documentParamsSchema.parse(request.params);
+      const query = viewerQuerySchema.parse(request.query);
       const payload = await request.appContext.services.documentService.getViewerPayload(
         params.projectId,
         params.documentId,
-        request.authUser!.userId
+        request.authUser!.userId,
+        query
       );
       return { data: payload, meta: null, error: null };
     })
@@ -102,10 +111,57 @@ export const registerDocumentRoutes: FastifyPluginAsync = async (app) => {
     "/projects/:projectId/documents/:documentId/anchors/:anchorId",
     authGuard(async (request) => {
       const params = anchorParamsSchema.parse(request.params);
+      const query = anchorQuerySchema.parse(request.query);
       const payload = await request.appContext.services.documentService.getAnchor(
         params.projectId,
         params.documentId,
         params.anchorId,
+        request.authUser!.userId,
+        query
+      );
+      return { data: payload, meta: null, error: null };
+    })
+  );
+
+  app.get(
+    "/projects/:projectId/documents/:documentId/search",
+    authGuard(async (request) => {
+      const params = documentParamsSchema.parse(request.params);
+      const query = documentSearchQuerySchema.parse(request.query);
+      const result = await request.appContext.services.documentService.searchDocument(
+        params.projectId,
+        params.documentId,
+        request.authUser!.userId,
+        query
+      );
+      return { data: result.items, meta: result.meta, error: null };
+    })
+  );
+
+  app.get(
+    "/projects/:projectId/documents/:documentId/anchors/:anchorId/provenance",
+    authGuard(async (request) => {
+      const params = anchorParamsSchema.parse(request.params);
+      const query = anchorQuerySchema.parse(request.query);
+      const payload = await request.appContext.services.documentService.getAnchorProvenance(
+        params.projectId,
+        params.documentId,
+        params.anchorId,
+        request.authUser!.userId,
+        query
+      );
+      return { data: payload, meta: null, error: null };
+    })
+  );
+
+  app.get(
+    "/projects/:projectId/messages/:messageId",
+    authGuard(async (request) => {
+      requireWorkspaceRole(request, ["manager", "dev"]);
+      const params = messageParamsSchema.parse(request.params);
+      const payload = await request.appContext.services.documentService.getMessageEvidence(
+        params.projectId,
+        params.messageId,
         request.authUser!.userId
       );
       return { data: payload, meta: null, error: null };

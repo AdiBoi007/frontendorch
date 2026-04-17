@@ -170,7 +170,7 @@ describe("hybridRetrieve", () => {
       projectId: "project-1",
       query: "did anyone mention voice notes?",
       queryEmbedding: [0.1, 0.2, 0.3],
-      intent: "provenance",
+      intent: "original_source",
       domains: {
         includeDocuments: false,
         includeBrainNodes: false,

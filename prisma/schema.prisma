@@ -366,6 +366,8 @@ model DocumentVersion {
   chunks           DocumentChunk[]
 
   @@unique([documentId, checksumSha256])
+  @@index([documentId, createdAt(sort: Desc)])
+  @@index([projectId, status, processedAt(sort: Desc)])
   @@map("document_versions")
 }
 
@@ -394,6 +396,9 @@ model DocumentSection {
 
   @@unique([documentVersionId, parseRevision, anchorId])
   @@unique([documentVersionId, parseRevision, sectionKey])
+  @@index([projectId, anchorId])
+  @@index([documentVersionId, parseRevision, orderIndex])
+  @@index([projectId, pageNumber, orderIndex])
   @@map("document_sections")
 }
 
@@ -417,6 +422,8 @@ model DocumentChunk {
   project           Project                   @relation(fields: [projectId], references: [id])
 
   @@unique([documentVersionId, parseRevision, chunkIndex])
+  @@index([projectId, sectionId])
+  @@index([documentVersionId, parseRevision, sectionId])
   @@map("document_chunks")
 }
 
@@ -543,6 +550,7 @@ model SpecChangeLink {
   project              Project            @relation(fields: [projectId], references: [id])
 
   @@unique([specChangeProposalId, linkType, linkRefId, relationship])
+  @@index([projectId, linkType, linkRefId])
   @@map("spec_change_links")
 }
 
@@ -579,6 +587,7 @@ model CommunicationThread {
   chunks            CommunicationMessageChunk[]
 
   @@unique([projectId, providerThreadId])
+  @@index([projectId, lastMessageAt(sort: Desc)])
   @@map("communication_threads")
 }
 
@@ -603,6 +612,8 @@ model CommunicationMessage {
   chunks            CommunicationMessageChunk[]
 
   @@unique([threadId, providerMessageId])
+  @@index([projectId, sentAt(sort: Desc)])
+  @@index([threadId, sentAt(sort: Desc)])
   @@map("communication_messages")
 }
 
@@ -695,6 +706,7 @@ model SocratesCitation {
   assistantMessage   SocratesMessage      @relation(fields: [assistantMessageId], references: [id])
 
   @@index([assistantMessageId])
+  @@index([projectId, citationType, refId])
   @@map("socrates_citations")
 }
 

@@ -344,6 +344,15 @@ Document metadata + current version summary.
 ## 7.4 GET /v1/projects/:projectId/documents/:documentId/view
 Live Doc Viewer payload.
 
+### Query params
+- `versionId`
+- `page`
+- `pageSize`
+- `anchorId`
+- `sectionId`
+- `chunkId`
+- `highlightCitationId`
+
 ### Response contract
 ```json
 {
@@ -360,23 +369,93 @@ Live Doc Viewer payload.
       "parseConfidence": 0.94,
       "sourceLabel": "Client PRD v3"
     },
+    "viewerState": {
+      "documentId": "uuid",
+      "documentVersionId": "uuid",
+      "pageNumber": 6,
+      "anchorId": "reporting_requirements"
+    },
+    "selected": {
+      "source": "anchor",
+      "documentId": "uuid",
+      "documentVersionId": "uuid",
+      "sectionId": "uuid",
+      "anchorId": "reporting_requirements",
+      "pageNumber": 6,
+      "chunkId": null
+    },
+    "highlight": {
+      "citationId": "uuid",
+      "citationType": "document_section",
+      "refId": "uuid",
+      "sectionId": "uuid",
+      "anchorId": "reporting_requirements",
+      "pageNumber": 6,
+      "chunkId": null,
+      "citationLabel": "Core PRD · p.6 · Features > Reporting",
+      "openTarget": {
+        "targetType": "document_section",
+        "targetRef": {
+          "documentId": "uuid",
+          "documentVersionId": "uuid",
+          "anchorId": "reporting_requirements",
+          "pageNumber": 6
+        }
+      }
+    },
     "sections": [
       {
         "sectionId": "uuid",
         "anchorId": "reporting_requirements",
+        "citationLabel": "Core PRD · p.6 · Features > Reporting",
         "pageNumber": 6,
         "headingPath": ["Features", "Reporting"],
+        "orderIndex": 12,
         "text": "...",
         "changeMarkers": [
           {
             "changeProposalId": "uuid",
+            "proposalType": "requirement_update",
             "status": "accepted",
-            "sourceMessageIds": ["uuid"]
+            "acceptedAt": "2026-04-17T12:00:00.000Z",
+            "acceptedBy": "uuid",
+            "title": "Reporting frequency updated",
+            "summary": "Client approved weekly reporting instead of monthly",
+            "decisionRecordId": "uuid",
+            "linkedBrainNodeIds": ["uuid"],
+            "linkedThreadIds": ["uuid"],
+            "linkedMessageRefs": [
+              {
+                "type": "message",
+                "id": "uuid",
+                "senderLabel": "Client",
+                "sentAt": "2026-04-12T10:00:00.000Z",
+                "threadId": "uuid"
+              }
+            ]
           }
         ],
-        "linkedDecisionIds": ["uuid"]
+        "linkedDecisionIds": ["uuid"],
+        "linkedMessageRefs": [
+          {
+            "type": "message",
+            "id": "uuid",
+            "senderLabel": "Client",
+            "sentAt": "2026-04-12T10:00:00.000Z",
+            "threadId": "uuid"
+          }
+        ],
+        "hasCurrentTruthOverlay": true,
+        "currentTruthSummary": ["Client approved weekly reporting instead of monthly"]
       }
-    ]
+    ],
+    "meta": {
+      "page": 1,
+      "pageSize": 50,
+      "totalCount": 120,
+      "totalPages": 3,
+      "hasMore": true
+    }
   }
 }
 ```
@@ -393,15 +472,44 @@ Open one exact anchor/section.
 
 This is the endpoint Socrates open-target behavior should use when opening precise locations.
 
+The anchor lookup must be a direct indexed lookup scoped to the chosen/current version, not an in-memory scan of the current page window.
+
 ---
 
-## 7.6 POST /v1/projects/:projectId/documents/:documentId/reprocess
+## 7.6 GET /v1/projects/:projectId/documents/:documentId/search?q=...
+Section-first lexical search within one document version.
+
+### Response should include
+- matching section ids
+- anchor ids
+- snippets
+- page numbers
+- citation labels
+- open-targets back into the viewer
+
+---
+
+## 7.7 GET /v1/projects/:projectId/documents/:documentId/anchors/:anchorId/provenance
+Click-to-source provenance bundle for one anchor.
+
+### Response should include
+- selected section identity
+- nearby supporting sections
+- linked chunks/evidence refs
+- linked brain nodes
+- linked accepted changes
+- linked decision records
+- linked message/thread refs where allowed
+- whether current accepted truth differs from original source in that area
+- open-targets for related evidence
+
+---
+
+## 7.8 POST /v1/projects/:projectId/documents/:documentId/reprocess
 Manager-only.
 Reparse/reindex a document version.
 
----
-
-## 7.7 POST /v1/projects/:projectId/brain/rebuild
+## 7.9 POST /v1/projects/:projectId/brain/rebuild
 Trigger full current-truth rebuild.
 
 ### What rebuild means
@@ -416,7 +524,7 @@ Return queued/accepted status plus current latest artifact refs.
 
 ---
 
-## 7.8 GET /v1/projects/:projectId/brain/current
+## 7.10 GET /v1/projects/:projectId/brain/current
 Return current accepted Product Brain.
 
 ### Response should include
@@ -430,12 +538,10 @@ Return current accepted Product Brain.
 
 ---
 
-## 7.9 GET /v1/projects/:projectId/brain/versions
+## 7.11 GET /v1/projects/:projectId/brain/versions
 Return Product Brain version history.
 
----
-
-## 7.10 GET /v1/projects/:projectId/brain/graph/current
+## 7.12 GET /v1/projects/:projectId/brain/graph/current
 Return current graph payload.
 
 ### Response should include
@@ -447,7 +553,7 @@ Return current graph payload.
 
 ---
 
-## 7.11 GET /v1/projects/:projectId/brain/diff?from=:id&to=:id
+## 7.13 GET /v1/projects/:projectId/brain/diff?from=:id&to=:id
 Compare two Product Brain versions.
 
 ---
@@ -501,6 +607,8 @@ Return thread details + message list + linked insights.
 
 ## 8.7 GET /v1/projects/:projectId/messages/:messageId
 Return one message with linked insights, changes, decisions, and open targets.
+
+This is an internal-only evidence route for the Live Doc Viewer and provenance inspection. Client-safe viewer payloads must not expose raw message bodies or direct message routes until a future explicit shareability model exists.
 
 ---
 

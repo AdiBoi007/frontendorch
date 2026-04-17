@@ -33,6 +33,110 @@ type JobPayload = {
   parseRevision: number;
 };
 
+type PaginationInput = {
+  page?: number;
+  pageSize?: number;
+};
+
+type ViewerPayloadOptions = PaginationInput & {
+  versionId?: string;
+  anchorId?: string;
+  sectionId?: string;
+  chunkId?: string;
+  highlightCitationId?: string;
+};
+
+type AnchorOptions = {
+  versionId?: string;
+  highlightCitationId?: string;
+};
+
+type DocumentSearchOptions = {
+  q: string;
+  versionId?: string;
+  limit?: number;
+};
+
+type MessageRef =
+  | {
+      type: "message";
+      id: string;
+      senderLabel: string | null;
+      sentAt: string | null;
+      threadId: string | null;
+    }
+  | {
+      type: "thread";
+      id: string;
+      subject: string | null;
+      lastMessageAt: string | null;
+    };
+
+type ViewerChangeMarker = {
+  changeProposalId: string | null;
+  proposalType: string;
+  status: string;
+  acceptedAt: string | null;
+  acceptedBy: string | null;
+  title: string;
+  summary: string;
+  decisionRecordId: string | null;
+  linkedBrainNodeIds: string[];
+  linkedThreadIds: string[];
+  linkedMessageRefs: MessageRef[];
+};
+
+type SectionReadModel = {
+  sectionId: string;
+  anchorId: string;
+  citationLabel: string;
+  pageNumber: number | null;
+  headingPath: string[];
+  orderIndex: number;
+  text: string;
+  changeMarkers: ViewerChangeMarker[];
+  linkedDecisionIds: string[];
+  linkedMessageRefs: MessageRef[];
+  hasCurrentTruthOverlay: boolean;
+  currentTruthSummary: string[] | null;
+};
+
+type ViewerOpenTarget = ReturnType<DocumentService["buildDocumentSectionOpenTarget"]>;
+
+type HighlightReadModel = {
+  citationId?: string;
+  citationType?: string;
+  refId: string;
+  sectionId: string;
+  anchorId: string;
+  pageNumber: number | null;
+  chunkId: string | null;
+  citationLabel: string;
+  openTarget: ViewerOpenTarget;
+};
+
+type TargetSection = {
+  source: "anchor" | "section" | "chunk" | "citation";
+  section: {
+    id: string;
+    anchorId: string;
+    pageNumber: number | null;
+    headingPath: string[];
+    orderIndex: number;
+    normalizedText: string;
+  };
+  chunkId?: string | null;
+  citationId?: string;
+  citationType?: string;
+};
+
+type SectionOverlayBundle = {
+  markersBySection: Record<string, ViewerChangeMarker[]>;
+  decisionIdsBySection: Record<string, string[]>;
+  messageRefsBySection: Record<string, MessageRef[]>;
+  truthSummariesBySection: Record<string, string[]>;
+};
+
 function ensureNonEmptySections(
   sections: Array<{ title: string; headingPath: string[]; pageNumber: number | null; text: string }>
 ) {
@@ -42,6 +146,36 @@ function ensureNonEmptySections(
       text: section.text.trim()
     }))
     .filter((section) => section.text.length > 0);
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
+
+function buildExcerpt(text: string, query: string) {
+  const trimmedText = text.trim();
+  const trimmedQuery = query.trim().toLowerCase();
+  const lower = trimmedText.toLowerCase();
+  const matchIndex = lower.indexOf(trimmedQuery);
+
+  if (matchIndex === -1) {
+    return trimmedText.slice(0, 220);
+  }
+
+  const start = Math.max(matchIndex - 80, 0);
+  const end = Math.min(matchIndex + query.length + 120, trimmedText.length);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < trimmedText.length ? "..." : "";
+  return `${prefix}${trimmedText.slice(start, end)}${suffix}`;
+}
+
+function computeSearchScore(sectionText: string, query: string, headingPath: string[]) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedText = sectionText.toLowerCase();
+  const firstMatchIndex = normalizedText.indexOf(normalizedQuery);
+  const occurrenceBoost = firstMatchIndex === -1 ? 0 : 1 / (firstMatchIndex + 1);
+  const headingBoost = headingPath.some((value) => value.toLowerCase().includes(normalizedQuery)) ? 1 : 0;
+  return headingBoost + occurrenceBoost;
 }
 
 export class DocumentService {
@@ -210,51 +344,44 @@ export class DocumentService {
     return created;
   }
 
-  async listDocuments(projectId: string, actorUserId: string) {
+  async listDocuments(projectId: string, actorUserId: string, opts: PaginationInput = {}) {
     const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
-    return this.prisma.document.findMany({
-      where: {
-        projectId,
-        ...(this.clientDocumentFilter(member.projectRole) ?? {})
-      },
-      include: {
-        versions: {
-          take: 1,
-          orderBy: {
-            createdAt: "desc"
-          }
-        }
-      },
-      orderBy: {
-        createdAt: "desc"
+    const pageSize = Math.min(opts.pageSize ?? 25, 200);
+    const page = Math.max(opts.page ?? 1, 1);
+    const skip = (page - 1) * pageSize;
+    const where = {
+      projectId,
+      ...(this.clientDocumentFilter(member.projectRole) ?? {})
+    };
+
+    const [totalCount, documents] = await Promise.all([
+      this.prisma.document.count({ where }),
+      this.prisma.document.findMany({
+        where,
+        orderBy: {
+          createdAt: "desc"
+        },
+        skip,
+        take: pageSize
+      })
+    ]);
+
+    const currentVersions = await this.loadCurrentVersions(documents);
+
+    return {
+      items: documents.map((document) => this.toDocumentListItem(document, currentVersions.get(document.currentVersionId ?? ""))),
+      meta: {
+        page,
+        pageSize,
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasMore: skip + documents.length < totalCount
       }
-    });
+    };
   }
 
   async getDocument(projectId: string, documentId: string, actorUserId: string) {
     const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
-    return this.prisma.document.findFirstOrThrow({
-      where: {
-        id: documentId,
-        projectId,
-        ...(this.clientDocumentFilter(member.projectRole) ?? {})
-      },
-      include: {
-        versions: {
-          orderBy: { createdAt: "desc" }
-        }
-      }
-    });
-  }
-
-  async getViewerPayload(
-    projectId: string,
-    documentId: string,
-    actorUserId: string,
-    opts: { page?: number; pageSize?: number } = {}
-  ) {
-    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
-
     const document = await this.prisma.document.findFirstOrThrow({
       where: {
         id: documentId,
@@ -263,201 +390,131 @@ export class DocumentService {
       }
     });
 
-    if (!document.currentVersionId) {
-      throw new AppError(400, "Document has no current version", "missing_current_version");
-    }
-
-    const version = await this.prisma.documentVersion.findUniqueOrThrow({
+    const versions = await this.prisma.documentVersion.findMany({
       where: {
-        id: document.currentVersionId
-      }
-    });
-
-    const pageSize = Math.min(opts.pageSize ?? 200, 200);
-    const page = Math.max(opts.page ?? 1, 1);
-    const skip = (page - 1) * pageSize;
-
-    const totalCount = await this.prisma.documentSection.count({
-      where: {
-        documentVersionId: version.id,
-        parseRevision: version.parseRevision
-      }
-    });
-
-    const sections = await this.prisma.documentSection.findMany({
-      where: {
-        documentVersionId: version.id,
-        parseRevision: version.parseRevision
+        documentId: document.id,
+        projectId
       },
       orderBy: {
-        orderIndex: "asc"
-      },
-      skip,
-      take: pageSize
+        createdAt: "desc"
+      }
     });
 
-    const sectionIds = sections.map((section) => section.id);
-    const acceptedLinks = sectionIds.length
-      ? await this.prisma.specChangeLink.findMany({
-          where: {
-            projectId,
-            linkType: "document_section",
-            linkRefId: {
-              in: sectionIds
-            },
-            proposal: {
-              status: "accepted"
-            }
-          },
-          include: {
-            proposal: {
-              include: {
-                decisionRecord: true
-              }
-            }
-          }
-        })
-      : [];
+    const currentVersion = versions.find((version) => version.id === document.currentVersionId) ?? null;
 
-    const proposalIds = Array.from(new Set(acceptedLinks.map((link) => link.specChangeProposalId)));
-    const proposalMessageLinks = proposalIds.length
-      ? await this.prisma.specChangeLink.findMany({
-          where: {
-            projectId,
-            specChangeProposalId: {
-              in: proposalIds
-            },
-            linkType: {
-              in: ["message", "thread"]
-            }
-          }
-        })
-      : [];
+    return {
+      id: document.id,
+      projectId: document.projectId,
+      title: document.title,
+      kind: document.kind,
+      visibility: document.visibility,
+      createdAt: document.createdAt.toISOString(),
+      updatedAt: document.updatedAt.toISOString(),
+      parseStatus: currentVersion?.status ?? null,
+      currentVersion: currentVersion ? this.toVersionSummary(currentVersion, true) : null,
+      versions: versions.map((version) => this.toVersionSummary(version, version.id === document.currentVersionId))
+    };
+  }
 
-    const messageIds = proposalMessageLinks
-      .filter((link) => link.linkType === "message")
-      .map((link) => link.linkRefId);
-    const threadIds = proposalMessageLinks
-      .filter((link) => link.linkType === "thread")
-      .map((link) => link.linkRefId);
+  async getViewerPayload(
+    projectId: string,
+    documentId: string,
+    actorUserId: string,
+    opts: ViewerPayloadOptions = {}
+  ) {
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
 
-    const [messages, threads] = await Promise.all([
-      messageIds.length
-        ? this.prisma.communicationMessage.findMany({
-            where: {
-              id: {
-                in: messageIds
-              }
-            }
-          })
-        : Promise.resolve([]),
-      threadIds.length
-        ? this.prisma.communicationThread.findMany({
-            where: {
-              id: {
-                in: threadIds
-              }
-            }
-          })
-        : Promise.resolve([])
+    const preResolvedHighlight = opts.highlightCitationId
+      ? await this.resolveHighlightCandidate(projectId, document.id, opts.highlightCitationId, member.projectRole)
+      : null;
+    const resolvedVersion = await this.resolveDocumentVersion(
+      projectId,
+      document,
+      opts.versionId ?? preResolvedHighlight?.versionId ?? undefined
+    );
+
+    const explicitTarget = await this.resolveExplicitTarget(projectId, document.id, resolvedVersion.id, opts);
+    const highlight = await this.resolveHighlightForVersion(
+      projectId,
+      document.id,
+      resolvedVersion.id,
+      opts.highlightCitationId,
+      member.projectRole,
+      preResolvedHighlight
+    );
+    const effectiveTarget = explicitTarget ?? highlight;
+
+    const pageSize = Math.min(opts.pageSize ?? 200, 200);
+    const selectedPage =
+      effectiveTarget != null ? Math.floor(effectiveTarget.section.orderIndex / pageSize) + 1 : Math.max(opts.page ?? 1, 1);
+    const skip = (selectedPage - 1) * pageSize;
+
+    const [totalCount, sections] = await Promise.all([
+      this.prisma.documentSection.count({
+        where: {
+          documentVersionId: resolvedVersion.id,
+          parseRevision: resolvedVersion.parseRevision
+        }
+      }),
+      this.prisma.documentSection.findMany({
+        where: {
+          documentVersionId: resolvedVersion.id,
+          parseRevision: resolvedVersion.parseRevision
+        },
+        orderBy: {
+          orderIndex: "asc"
+        },
+        skip,
+        take: pageSize
+      })
     ]);
 
-    const messageById = new Map(messages.map((message) => [message.id, message]));
-    const threadById = new Map(threads.map((thread) => [thread.id, thread]));
-
-    const messageRefsByProposal = proposalMessageLinks.reduce<
-      Record<string, Array<Record<string, string | null>>>
-    >((accumulator, link) => {
-      accumulator[link.specChangeProposalId] ??= [];
-
-      if (link.linkType === "message") {
-        const message = messageById.get(link.linkRefId);
-        accumulator[link.specChangeProposalId].push({
-          type: "message",
-          id: link.linkRefId,
-          senderLabel: message?.senderLabel ?? null,
-          sentAt: message?.sentAt.toISOString?.() ?? null,
-          threadId: message?.threadId ?? null
-        });
-      } else {
-        const thread = threadById.get(link.linkRefId);
-        accumulator[link.specChangeProposalId].push({
-          type: "thread",
-          id: link.linkRefId,
-          subject: thread?.subject ?? null,
-          lastMessageAt: thread?.lastMessageAt?.toISOString?.() ?? null
-        });
-      }
-
-      return accumulator;
-    }, {});
-
-    const markersBySection = acceptedLinks.reduce<
-      Record<
-        string,
-        Array<{
-          changeProposalId: string;
-          status: string;
-          acceptedAt: string | null;
-          acceptedBy: string | null;
-        }>
-      >
-    >((accumulator, link) => {
-      accumulator[link.linkRefId] ??= [];
-      accumulator[link.linkRefId].push({
-        changeProposalId: link.specChangeProposalId,
-        status: link.proposal.status,
-        acceptedAt: link.proposal.acceptedAt?.toISOString() ?? null,
-        acceptedBy: link.proposal.acceptedBy ?? null
-      });
-      return accumulator;
-    }, {});
-
-    const decisionIdsBySection = acceptedLinks.reduce<Record<string, string[]>>((accumulator, link) => {
-      if (!link.proposal.decisionRecordId) {
-        return accumulator;
-      }
-
-      accumulator[link.linkRefId] ??= [];
-      accumulator[link.linkRefId].push(link.proposal.decisionRecordId);
-      return accumulator;
-    }, {});
-
-    const messageRefsBySection = acceptedLinks.reduce<Record<string, Array<Record<string, string | null>>>>(
-      (accumulator, link) => {
-        accumulator[link.linkRefId] ??= [];
-        accumulator[link.linkRefId].push(...(messageRefsByProposal[link.specChangeProposalId] ?? []));
-        return accumulator;
-      },
-      {}
+    const sectionPayloads = await this.buildSectionPayloads(
+      projectId,
+      document,
+      resolvedVersion,
+      sections,
+      member.projectRole
     );
 
     return {
-      document: {
-        id: document.id,
-        title: document.title,
-        kind: document.kind,
-        currentVersionId: version.id
-      },
-      version: {
-        id: version.id,
-        status: version.status,
-        parseRevision: version.parseRevision,
-        parseConfidence: version.parseConfidence,
-        sourceLabel: version.sourceLabel
-      },
-      sections: sections.map((section) => ({
-        sectionId: section.id,
-        anchorId: section.anchorId,
-        pageNumber: section.pageNumber,
-        headingPath: section.headingPath,
-        text: section.normalizedText,
-        changeMarkers: markersBySection[section.id] ?? [],
-        linkedDecisionIds: Array.from(new Set(decisionIdsBySection[section.id] ?? [])),
-        linkedMessageRefs: messageRefsBySection[section.id] ?? []
-      })),
+      document: this.toDocumentIdentity(document),
+      version: this.toVersionSummary(resolvedVersion, resolvedVersion.id === document.currentVersionId),
+      viewerState: effectiveTarget
+        ? {
+            documentId: document.id,
+            documentVersionId: resolvedVersion.id,
+            pageNumber: effectiveTarget.section.pageNumber,
+            anchorId: effectiveTarget.section.anchorId
+          }
+        : null,
+      selected: effectiveTarget
+        ? {
+            source: effectiveTarget.source,
+            documentId: document.id,
+            documentVersionId: resolvedVersion.id,
+            sectionId: effectiveTarget.section.id,
+            anchorId: effectiveTarget.section.anchorId,
+            pageNumber: effectiveTarget.section.pageNumber,
+            chunkId: effectiveTarget.chunkId ?? null
+          }
+        : null,
+      highlight:
+        highlight != null
+          ? this.toHighlight(
+              document.id,
+              document.title,
+              resolvedVersion.id,
+              highlight.section,
+              highlight.citationId,
+              highlight.citationType,
+              highlight.chunkId
+            )
+          : null,
+      sections: sectionPayloads,
       meta: {
-        page,
+        page: selectedPage,
         pageSize,
         totalCount,
         totalPages: Math.ceil(totalCount / pageSize),
@@ -466,18 +523,466 @@ export class DocumentService {
     };
   }
 
-  async getAnchor(projectId: string, documentId: string, anchorId: string, actorUserId: string) {
-    const payload = await this.getViewerPayload(projectId, documentId, actorUserId);
-    const section = payload.sections.find((item) => item.anchorId === anchorId);
-
-    if (!section) {
-      throw new AppError(404, "Anchor not found", "anchor_not_found");
-    }
+  async getAnchor(
+    projectId: string,
+    documentId: string,
+    anchorId: string,
+    actorUserId: string,
+    opts: AnchorOptions = {}
+  ) {
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
+    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId);
+    const section = await this.loadSectionByAnchor(projectId, version.id, version.parseRevision, anchorId);
+    const [sectionPayload] = await this.buildSectionPayloads(projectId, document, version, [section], member.projectRole);
+    const highlight = await this.resolveHighlightForVersion(
+      projectId,
+      document.id,
+      version.id,
+      opts.highlightCitationId,
+      member.projectRole
+    );
 
     return {
-      document: payload.document,
-      version: payload.version,
-      section
+      document: this.toDocumentIdentity(document),
+      version: this.toVersionSummary(version, version.id === document.currentVersionId),
+      viewerState: {
+        documentId: document.id,
+        documentVersionId: version.id,
+        pageNumber: section.pageNumber,
+        anchorId: section.anchorId
+      },
+      selected: {
+        source: "anchor" as const,
+        documentId: document.id,
+        documentVersionId: version.id,
+        sectionId: section.id,
+        anchorId: section.anchorId,
+        pageNumber: section.pageNumber,
+        chunkId: null
+      },
+      highlight:
+        highlight != null
+          ? this.toHighlight(
+              document.id,
+              document.title,
+              version.id,
+              highlight.section,
+              highlight.citationId,
+              highlight.citationType,
+              highlight.chunkId
+            )
+          : null,
+      section: sectionPayload
+    };
+  }
+
+  async searchDocument(
+    projectId: string,
+    documentId: string,
+    actorUserId: string,
+    opts: DocumentSearchOptions
+  ) {
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
+    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId);
+    const limit = Math.min(opts.limit ?? 20, 50);
+
+    const sections = await this.prisma.documentSection.findMany({
+      where: {
+        documentVersionId: version.id,
+        parseRevision: version.parseRevision,
+        normalizedText: {
+          contains: opts.q,
+          mode: "insensitive"
+        }
+      },
+      orderBy: {
+        orderIndex: "asc"
+      },
+      take: 250
+    });
+
+    const items = sections
+      .map((section) => ({
+        sectionId: section.id,
+        anchorId: section.anchorId,
+        citationLabel: this.buildCitationLabel(document.title, section.headingPath, section.pageNumber, section.anchorId),
+        pageNumber: section.pageNumber,
+        headingPath: section.headingPath,
+        orderIndex: section.orderIndex,
+        snippet: buildExcerpt(section.normalizedText, opts.q),
+        score: computeSearchScore(section.normalizedText, opts.q, section.headingPath),
+        openTarget: this.buildDocumentSectionOpenTarget(document.id, version.id, section.anchorId, section.pageNumber)
+      }))
+      .sort((left, right) => right.score - left.score || left.orderIndex - right.orderIndex)
+      .slice(0, limit);
+
+    return {
+      items,
+      meta: {
+        query: opts.q,
+        count: items.length,
+        versionId: version.id,
+        limited: sections.length > limit
+      }
+    };
+  }
+
+  async getAnchorProvenance(
+    projectId: string,
+    documentId: string,
+    anchorId: string,
+    actorUserId: string,
+    opts: AnchorOptions = {}
+  ) {
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
+    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId);
+    const section = await this.loadSectionByAnchor(projectId, version.id, version.parseRevision, anchorId);
+    const [selectedSection] = await this.buildSectionPayloads(projectId, document, version, [section], member.projectRole);
+    const supportingSectionsRaw = await this.prisma.documentSection.findMany({
+      where: {
+        documentVersionId: version.id,
+        parseRevision: version.parseRevision,
+        orderIndex: {
+          gte: Math.max(section.orderIndex - 1, 0),
+          lte: section.orderIndex + 1
+        },
+        id: {
+          not: section.id
+        }
+      },
+      orderBy: {
+        orderIndex: "asc"
+      }
+    });
+    const supportingSections = await this.buildSectionPayloads(
+      projectId,
+      document,
+      version,
+      supportingSectionsRaw,
+      member.projectRole
+    );
+    const chunks = await this.prisma.documentChunk.findMany({
+      where: {
+        documentVersionId: version.id,
+        parseRevision: version.parseRevision,
+        sectionId: section.id
+      },
+      orderBy: {
+        chunkIndex: "asc"
+      }
+    });
+
+    const currentGraph = await this.prisma.artifactVersion.findFirst({
+      where: {
+        projectId,
+        artifactType: "brain_graph",
+        status: "accepted"
+      },
+      orderBy: [{ acceptedAt: "desc" }, { createdAt: "desc" }]
+    });
+
+    const brainLinks = currentGraph
+      ? await this.prisma.brainSectionLink.findMany({
+          where: {
+            projectId,
+            artifactVersionId: currentGraph.id,
+            documentSectionId: section.id
+          },
+          include: {
+            brainNode: true
+          }
+        })
+      : [];
+
+    const visibleBrainLinks =
+      member.projectRole === "client" ? await this.filterClientSafeBrainLinks(projectId, brainLinks) : brainLinks;
+    const nodeIds = visibleBrainLinks.map((link) => link.brainNodeId);
+    const edges =
+      nodeIds.length > 0 && currentGraph
+        ? await this.prisma.brainEdge.findMany({
+            where: {
+              projectId,
+              artifactVersionId: currentGraph.id,
+              OR: [{ fromNodeId: { in: nodeIds } }, { toNodeId: { in: nodeIds } }]
+            }
+          })
+        : [];
+
+    const acceptedLinks = await this.prisma.specChangeLink.findMany({
+      where: {
+        projectId,
+        linkType: "document_section",
+        linkRefId: section.id,
+        proposal: {
+          status: "accepted"
+        }
+      },
+      include: {
+        proposal: {
+          include: {
+            decisionRecord: true
+          }
+        }
+      }
+    });
+
+    const proposalIds = acceptedLinks.map((link) => link.specChangeProposalId);
+    const relatedLinks = proposalIds.length
+      ? await this.prisma.specChangeLink.findMany({
+          where: {
+            projectId,
+            specChangeProposalId: {
+              in: proposalIds
+            },
+            linkType: {
+              in: ["message", "thread", "brain_node"]
+            }
+          }
+        })
+      : [];
+    const relatedMessageRefs = member.projectRole === "client" ? [] : await this.loadRelatedMessageRefs(projectId, relatedLinks);
+
+    const linkedDecisions =
+      member.projectRole === "client"
+        ? []
+        : uniqueStrings(acceptedLinks.map((link) => link.proposal.decisionRecordId))
+            .map((decisionId) => {
+              const proposal = acceptedLinks.find((item) => item.proposal.decisionRecordId === decisionId)?.proposal;
+              return proposal?.decisionRecord
+                ? {
+                    id: proposal.decisionRecord.id,
+                    title: proposal.decisionRecord.title,
+                    statement: proposal.decisionRecord.statement,
+                    status: proposal.decisionRecord.status,
+                    openTarget: this.buildDecisionOpenTarget(proposal.decisionRecord.id)
+                  }
+                : null;
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    const linkedChanges = acceptedLinks.map((link) => {
+      const proposalLinks = relatedLinks.filter((candidate) => candidate.specChangeProposalId === link.specChangeProposalId);
+      const linkedBrainNodeIds = proposalLinks
+        .filter((candidate) => candidate.linkType === "brain_node")
+        .map((candidate) => candidate.linkRefId);
+      const linkedThreadIds = proposalLinks
+        .filter((candidate) => candidate.linkType === "thread")
+        .map((candidate) => candidate.linkRefId);
+      const linkedMessageRefs = relatedMessageRefs.filter((candidate) =>
+        candidate.type === "thread"
+          ? linkedThreadIds.includes(candidate.id)
+          : proposalLinks.some((proposalLink) => proposalLink.linkType === "message" && proposalLink.linkRefId === candidate.id)
+      );
+
+      return {
+        proposalId: member.projectRole === "client" ? null : link.proposal.id,
+        proposalType: link.proposal.proposalType,
+        status: link.proposal.status,
+        title: link.proposal.title,
+        summary: link.proposal.summary,
+        acceptedAt: link.proposal.acceptedAt?.toISOString() ?? null,
+        acceptedBy: member.projectRole === "client" ? null : link.proposal.acceptedBy,
+        linkedBrainNodeIds: member.projectRole === "client" ? [] : linkedBrainNodeIds,
+        linkedThreadIds: member.projectRole === "client" ? [] : linkedThreadIds,
+        linkedMessageRefs: member.projectRole === "client" ? [] : linkedMessageRefs,
+        openTarget: member.projectRole === "client" ? null : this.buildChangeProposalOpenTarget(link.proposal.id)
+      };
+    });
+
+    const linkedBrainNodes = visibleBrainLinks.map((link) => ({
+      nodeId: link.brainNode.id,
+      title: link.brainNode.title,
+      nodeType: link.brainNode.nodeType,
+      status: link.brainNode.status,
+      relationship: link.relationship,
+      openTarget: this.buildBrainNodeOpenTarget(link.brainNode.id, currentGraph?.id),
+      graphRelationships: edges
+        .filter((edge) => edge.fromNodeId === link.brainNodeId || edge.toNodeId === link.brainNodeId)
+        .map((edge) => ({
+          edgeType: edge.edgeType,
+          fromNodeId: edge.fromNodeId,
+          toNodeId: edge.toNodeId
+        }))
+    }));
+
+    return {
+      document: this.toDocumentIdentity(document),
+      version: this.toVersionSummary(version, version.id === document.currentVersionId),
+      selectedSection,
+      supportingSections,
+      supportingEvidence: chunks.map((chunk) => ({
+        chunkId: chunk.id,
+        chunkIndex: chunk.chunkIndex,
+        pageNumber: chunk.pageNumber,
+        tokenCount: chunk.tokenCount,
+        excerpt: chunk.content.slice(0, 220)
+      })),
+      linkedBrainNodes,
+      linkedChanges,
+      linkedDecisions,
+      linkedMessageRefs: member.projectRole === "client" ? [] : relatedMessageRefs,
+      currentTruth: {
+        differsFromSource: selectedSection.hasCurrentTruthOverlay,
+        summaries: selectedSection.currentTruthSummary ?? []
+      },
+      openTargets: {
+        selectedSection: this.buildDocumentSectionOpenTarget(document.id, version.id, section.anchorId, section.pageNumber),
+        supportingSections: supportingSections.map((candidate) =>
+          this.buildDocumentSectionOpenTarget(document.id, version.id, candidate.anchorId, candidate.pageNumber)
+        )
+      }
+    };
+  }
+
+  async getMessageEvidence(projectId: string, messageId: string, actorUserId: string) {
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    if (member.projectRole === "client") {
+      throw new AppError(403, "Client access is not allowed for message evidence", "client_message_access_forbidden");
+    }
+
+    const message = await this.prisma.communicationMessage.findFirstOrThrow({
+      where: {
+        id: messageId,
+        projectId
+      },
+      include: {
+        thread: true
+      }
+    });
+
+    const proposalLinks = await this.prisma.specChangeLink.findMany({
+      where: {
+        projectId,
+        OR: [
+          { linkType: "message", linkRefId: message.id },
+          ...(message.threadId ? [{ linkType: "thread" as const, linkRefId: message.threadId }] : [])
+        ]
+      },
+      include: {
+        proposal: {
+          include: {
+            decisionRecord: true
+          }
+        }
+      }
+    });
+
+    const proposalIds = uniqueStrings(proposalLinks.map((link) => link.specChangeProposalId));
+    const sectionLinks = proposalIds.length
+      ? await this.prisma.specChangeLink.findMany({
+          where: {
+            projectId,
+            specChangeProposalId: {
+              in: proposalIds
+            },
+            linkType: "document_section"
+          }
+        })
+      : [];
+    const sections = sectionLinks.length
+      ? await this.prisma.documentSection.findMany({
+          where: {
+            projectId,
+            id: {
+              in: sectionLinks.map((link) => link.linkRefId)
+            }
+          },
+          include: {
+            documentVersion: {
+              include: {
+                document: true
+              }
+            }
+          },
+          orderBy: {
+            orderIndex: "asc"
+          }
+        })
+      : [];
+    const sectionsById = new Map(sections.map((section) => [section.id, section]));
+
+    const linkedDocuments = sectionLinks
+      .map((link) => {
+        const section = sectionsById.get(link.linkRefId);
+        if (!section) {
+          return null;
+        }
+
+        return {
+          sectionId: section.id,
+          anchorId: section.anchorId,
+          pageNumber: section.pageNumber,
+          headingPath: section.headingPath,
+          documentId: section.documentVersion.documentId,
+          documentTitle: section.documentVersion.document.title,
+          openTarget: this.buildDocumentSectionOpenTarget(
+            section.documentVersion.documentId,
+            section.documentVersionId,
+            section.anchorId,
+            section.pageNumber
+          )
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      .filter(
+        (item, index, collection) =>
+          collection.findIndex((candidate) => candidate.sectionId === item.sectionId) === index
+      );
+
+    const uniqueProposalLinks = proposalLinks.filter(
+      (link, index, collection) =>
+        collection.findIndex((candidate) => candidate.specChangeProposalId === link.specChangeProposalId) === index
+    );
+
+    const linkedDecisions = uniqueStrings(uniqueProposalLinks.map((link) => link.proposal.decisionRecordId))
+      .map((decisionId) => {
+        const proposal = uniqueProposalLinks.find((link) => link.proposal.decisionRecordId === decisionId)?.proposal;
+        return proposal?.decisionRecord
+          ? {
+              id: proposal.decisionRecord.id,
+              title: proposal.decisionRecord.title,
+              statement: proposal.decisionRecord.statement,
+              status: proposal.decisionRecord.status,
+              openTarget: this.buildDecisionOpenTarget(proposal.decisionRecord.id)
+            }
+          : null;
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    return {
+      message: {
+        id: message.id,
+        threadId: message.threadId,
+        senderLabel: message.senderLabel,
+        sentAt: message.sentAt.toISOString(),
+        bodyText: message.bodyText,
+        messageType: message.messageType,
+        replyToMessageId: message.replyToMessageId
+      },
+      thread: {
+        id: message.thread.id,
+        subject: message.thread.subject,
+        participants: message.thread.participantsJson,
+        startedAt: message.thread.startedAt?.toISOString() ?? null,
+        lastMessageAt: message.thread.lastMessageAt?.toISOString() ?? null
+      },
+      linkedDocuments,
+      linkedChanges: uniqueProposalLinks.map((link) => ({
+        proposalId: link.proposal.id,
+        title: link.proposal.title,
+        summary: link.proposal.summary,
+        proposalType: link.proposal.proposalType,
+        status: link.proposal.status,
+        openTarget: this.buildChangeProposalOpenTarget(link.proposal.id)
+      })),
+      linkedDecisions,
+      openTargets: {
+        thread: this.buildThreadOpenTarget(message.threadId),
+        documents: linkedDocuments.map((documentLink) => documentLink.openTarget)
+      }
     };
   }
 
@@ -793,7 +1298,10 @@ export class DocumentService {
       });
 
       await this.finishJob(JobNames.embedDocumentChunks, embedKey);
-      const sourceKey = jobKeys.generateSourcePackage(version.projectId, await this.buildSourcePackageSignature(version.projectId));
+      const sourceKey = jobKeys.generateSourcePackage(
+        version.projectId,
+        await this.buildSourcePackageSignature(version.projectId)
+      );
       await this.recordQueuedJob(JobNames.generateSourcePackage, sourceKey, { projectId: version.projectId });
       await this.jobs.enqueue(JobNames.generateSourcePackage, { projectId: version.projectId }, sourceKey);
       return { skipped: false };
@@ -908,6 +1416,703 @@ export class DocumentService {
         lastError: error instanceof Error ? error.message : "Unknown error"
       }
     });
+  }
+
+  private async ensureAccessibleDocument(projectId: string, documentId: string, projectRole: string) {
+    return this.prisma.document.findFirstOrThrow({
+      where: {
+        id: documentId,
+        projectId,
+        ...(this.clientDocumentFilter(projectRole) ?? {})
+      }
+    });
+  }
+
+  private async loadCurrentVersions(documents: Array<{ currentVersionId: string | null }>) {
+    const versionIds = uniqueStrings(documents.map((document) => document.currentVersionId));
+    if (versionIds.length === 0) {
+      return new Map<string, Awaited<ReturnType<typeof this.prisma.documentVersion.findMany>>[number]>();
+    }
+
+    const versions = await this.prisma.documentVersion.findMany({
+      where: {
+        id: {
+          in: versionIds
+        }
+      }
+    });
+
+    return new Map(versions.map((version) => [version.id, version]));
+  }
+
+  private async resolveDocumentVersion(
+    projectId: string,
+    document: { id: string; currentVersionId: string | null },
+    versionId?: string
+  ) {
+    const resolvedVersionId = versionId ?? document.currentVersionId;
+    if (!resolvedVersionId) {
+      throw new AppError(400, "Document has no current version", "missing_current_version");
+    }
+
+    return this.prisma.documentVersion.findFirstOrThrow({
+      where: {
+        id: resolvedVersionId,
+        documentId: document.id,
+        projectId
+      }
+    });
+  }
+
+  private async loadSectionById(projectId: string, versionId: string, parseRevision: number, sectionId: string) {
+    return this.prisma.documentSection.findFirstOrThrow({
+      where: {
+        id: sectionId,
+        projectId,
+        documentVersionId: versionId,
+        parseRevision
+      }
+    });
+  }
+
+  private async loadSectionByAnchor(projectId: string, versionId: string, parseRevision: number, anchorId: string) {
+    return this.prisma.documentSection.findFirstOrThrow({
+      where: {
+        projectId,
+        documentVersionId: versionId,
+        parseRevision,
+        anchorId
+      }
+    });
+  }
+
+  private async resolveExplicitTarget(
+    projectId: string,
+    _documentId: string,
+    versionId: string,
+    opts: ViewerPayloadOptions
+  ): Promise<TargetSection | null> {
+    const version = await this.prisma.documentVersion.findFirstOrThrow({
+      where: {
+        id: versionId,
+        projectId
+      }
+    });
+
+    if (opts.chunkId) {
+      const chunk = await this.prisma.documentChunk.findFirstOrThrow({
+        where: {
+          id: opts.chunkId,
+          projectId,
+          documentVersionId: versionId,
+          parseRevision: version.parseRevision
+        }
+      });
+      if (!chunk.sectionId) {
+        throw new AppError(409, "Chunk is not attached to a parsed section", "chunk_missing_section");
+      }
+      const section = await this.loadSectionById(projectId, versionId, version.parseRevision, chunk.sectionId);
+      return { source: "chunk", section, chunkId: chunk.id };
+    }
+
+    if (opts.sectionId) {
+      const section = await this.loadSectionById(projectId, versionId, version.parseRevision, opts.sectionId);
+      return { source: "section", section };
+    }
+
+    if (opts.anchorId) {
+      const section = await this.loadSectionByAnchor(projectId, versionId, version.parseRevision, opts.anchorId);
+      return { source: "anchor", section };
+    }
+
+    return null;
+  }
+
+  private async resolveHighlightCandidate(
+    projectId: string,
+    documentId: string,
+    citationId: string,
+    projectRole: string
+  ) {
+    const citation = await this.prisma.socratesCitation.findFirstOrThrow({
+      where: {
+        id: citationId,
+        projectId
+      }
+    });
+
+    if (citation.citationType !== "document_section" && citation.citationType !== "document_chunk") {
+      throw new AppError(422, "Citation cannot be highlighted inside the document viewer", "invalid_viewer_highlight");
+    }
+
+    if (citation.citationType === "document_section") {
+      const section = await this.prisma.documentSection.findFirstOrThrow({
+        where: {
+          id: citation.refId,
+          projectId
+        },
+        include: {
+          documentVersion: {
+            include: {
+              document: true
+            }
+          }
+        }
+      });
+
+      if (section.documentVersion.documentId !== documentId) {
+        throw new AppError(409, "Citation does not belong to the requested document", "citation_document_mismatch");
+      }
+
+      if (projectRole === "client" && section.documentVersion.document.visibility === "internal") {
+        throw new AppError(403, "Client access is not allowed for internal citations", "client_highlight_forbidden");
+      }
+
+      return {
+        citationId: citation.id,
+        citationType: citation.citationType,
+        versionId: section.documentVersionId,
+        section,
+        chunkId: null
+      };
+    }
+
+    const chunk = await this.prisma.documentChunk.findFirstOrThrow({
+      where: {
+        id: citation.refId,
+        projectId
+      },
+      include: {
+        documentVersion: {
+          include: {
+            document: true
+          }
+        }
+      }
+    });
+
+    if (chunk.documentVersion.documentId !== documentId) {
+      throw new AppError(409, "Citation does not belong to the requested document", "citation_document_mismatch");
+    }
+
+    if (projectRole === "client" && chunk.documentVersion.document.visibility === "internal") {
+      throw new AppError(403, "Client access is not allowed for internal citations", "client_highlight_forbidden");
+    }
+
+    if (!chunk.sectionId) {
+      throw new AppError(409, "Citation chunk is missing its parent section", "citation_chunk_missing_section");
+    }
+
+    const section = await this.prisma.documentSection.findFirstOrThrow({
+      where: {
+        id: chunk.sectionId,
+        projectId
+      }
+    });
+
+    return {
+      citationId: citation.id,
+      citationType: citation.citationType,
+      versionId: chunk.documentVersionId,
+      section,
+      chunkId: chunk.id
+    };
+  }
+
+  private async resolveHighlightForVersion(
+    projectId: string,
+    documentId: string,
+    versionId: string,
+    highlightCitationId: string | undefined,
+    projectRole: string,
+    preResolved?: Awaited<ReturnType<DocumentService["resolveHighlightCandidate"]>> | null
+  ): Promise<TargetSection | null> {
+    if (!highlightCitationId) {
+      return null;
+    }
+
+    const candidate =
+      preResolved ?? (await this.resolveHighlightCandidate(projectId, documentId, highlightCitationId, projectRole));
+
+    if (candidate.versionId !== versionId) {
+      throw new AppError(
+        409,
+        "Highlighted citation belongs to a different document version than the requested viewer state",
+        "citation_version_mismatch"
+      );
+    }
+
+    return {
+      source: "citation",
+      section: candidate.section,
+      chunkId: candidate.chunkId,
+      citationId: candidate.citationId,
+      citationType: candidate.citationType
+    };
+  }
+
+  private async buildSectionPayloads(
+    projectId: string,
+    document: { id: string; title: string },
+    version: { id: string; parseRevision: number },
+    sections: Array<{
+      id: string;
+      anchorId: string;
+      pageNumber: number | null;
+      headingPath: string[];
+      normalizedText: string;
+      orderIndex: number;
+    }>,
+    projectRole: string
+  ) {
+    if (sections.length === 0) {
+      return [] satisfies SectionReadModel[];
+    }
+
+    const overlays = await this.loadSectionOverlays(projectId, sections.map((section) => section.id), projectRole);
+
+    return sections.map((section) => ({
+      sectionId: section.id,
+      anchorId: section.anchorId,
+      citationLabel: this.buildCitationLabel(document.title, section.headingPath, section.pageNumber, section.anchorId),
+      pageNumber: section.pageNumber,
+      headingPath: section.headingPath,
+      orderIndex: section.orderIndex,
+      text: section.normalizedText,
+      changeMarkers: overlays.markersBySection[section.id] ?? [],
+      linkedDecisionIds: overlays.decisionIdsBySection[section.id] ?? [],
+      linkedMessageRefs: overlays.messageRefsBySection[section.id] ?? [],
+      hasCurrentTruthOverlay: (overlays.markersBySection[section.id] ?? []).length > 0,
+      currentTruthSummary: overlays.truthSummariesBySection[section.id]?.length
+        ? overlays.truthSummariesBySection[section.id]
+        : null
+    }));
+  }
+
+  private async loadSectionOverlays(projectId: string, sectionIds: string[], projectRole: string): Promise<SectionOverlayBundle> {
+    if (sectionIds.length === 0) {
+      return {
+        markersBySection: {},
+        decisionIdsBySection: {},
+        messageRefsBySection: {},
+        truthSummariesBySection: {}
+      };
+    }
+
+    const acceptedLinks = await this.prisma.specChangeLink.findMany({
+      where: {
+        projectId,
+        linkType: "document_section",
+        linkRefId: {
+          in: sectionIds
+        },
+        proposal: {
+          status: "accepted"
+        }
+      },
+      include: {
+        proposal: {
+          include: {
+            decisionRecord: true
+          }
+        }
+      }
+    });
+
+    const proposalIds = uniqueStrings(acceptedLinks.map((link) => link.specChangeProposalId));
+    const relatedLinks = proposalIds.length
+      ? await this.prisma.specChangeLink.findMany({
+          where: {
+            projectId,
+            specChangeProposalId: {
+              in: proposalIds
+            },
+            linkType: {
+              in: ["message", "thread", "brain_node"]
+            }
+          }
+        })
+      : [];
+
+    const relatedMessageRefs = projectRole === "client" ? [] : await this.loadRelatedMessageRefs(projectId, relatedLinks);
+    const proposalMessageRefs = relatedLinks.reduce<Record<string, MessageRef[]>>((accumulator, link) => {
+      if (projectRole === "client") {
+        return accumulator;
+      }
+
+      accumulator[link.specChangeProposalId] ??= [];
+      if (link.linkType === "thread") {
+        const threadRef = relatedMessageRefs.find(
+          (candidate) => candidate.type === "thread" && candidate.id === link.linkRefId
+        );
+        if (threadRef) {
+          accumulator[link.specChangeProposalId].push(threadRef);
+        }
+      }
+
+      if (link.linkType === "message") {
+        const messageRef = relatedMessageRefs.find(
+          (candidate) => candidate.type === "message" && candidate.id === link.linkRefId
+        );
+        if (messageRef) {
+          accumulator[link.specChangeProposalId].push(messageRef);
+        }
+      }
+
+      return accumulator;
+    }, {});
+    const proposalBrainNodeIds = relatedLinks.reduce<Record<string, string[]>>((accumulator, link) => {
+      if (link.linkType !== "brain_node") {
+        return accumulator;
+      }
+
+      accumulator[link.specChangeProposalId] ??= [];
+      accumulator[link.specChangeProposalId].push(link.linkRefId);
+      return accumulator;
+    }, {});
+    const proposalThreadIds = relatedLinks.reduce<Record<string, string[]>>((accumulator, link) => {
+      if (link.linkType !== "thread") {
+        return accumulator;
+      }
+
+      accumulator[link.specChangeProposalId] ??= [];
+      accumulator[link.specChangeProposalId].push(link.linkRefId);
+      return accumulator;
+    }, {});
+
+    const markersBySection = acceptedLinks.reduce<Record<string, ViewerChangeMarker[]>>((accumulator, link) => {
+      const messageRefs = proposalMessageRefs[link.specChangeProposalId] ?? [];
+      const marker: ViewerChangeMarker = {
+        changeProposalId: projectRole === "client" ? null : link.proposal.id,
+        proposalType: link.proposal.proposalType,
+        status: link.proposal.status,
+        acceptedAt: link.proposal.acceptedAt?.toISOString() ?? null,
+        acceptedBy: projectRole === "client" ? null : link.proposal.acceptedBy,
+        title: link.proposal.title,
+        summary: link.proposal.summary,
+        decisionRecordId: projectRole === "client" ? null : link.proposal.decisionRecordId,
+        linkedBrainNodeIds: projectRole === "client" ? [] : proposalBrainNodeIds[link.specChangeProposalId] ?? [],
+        linkedThreadIds: projectRole === "client" ? [] : proposalThreadIds[link.specChangeProposalId] ?? [],
+        linkedMessageRefs: projectRole === "client" ? [] : messageRefs
+      };
+      accumulator[link.linkRefId] ??= [];
+      accumulator[link.linkRefId].push(marker);
+      return accumulator;
+    }, {});
+
+    const decisionIdsBySection =
+      projectRole === "client"
+        ? {}
+        : acceptedLinks.reduce<Record<string, string[]>>((accumulator, link) => {
+            if (!link.proposal.decisionRecordId) {
+              return accumulator;
+            }
+
+            accumulator[link.linkRefId] ??= [];
+            accumulator[link.linkRefId].push(link.proposal.decisionRecordId);
+            return accumulator;
+          }, {});
+
+    const messageRefsBySection =
+      projectRole === "client"
+        ? {}
+        : acceptedLinks.reduce<Record<string, MessageRef[]>>((accumulator, link) => {
+            accumulator[link.linkRefId] ??= [];
+            accumulator[link.linkRefId].push(...(proposalMessageRefs[link.specChangeProposalId] ?? []));
+            return accumulator;
+          }, {});
+
+    const truthSummariesBySection = acceptedLinks.reduce<Record<string, string[]>>((accumulator, link) => {
+      accumulator[link.linkRefId] ??= [];
+      accumulator[link.linkRefId].push(link.proposal.summary);
+      return accumulator;
+    }, {});
+
+    return {
+      markersBySection,
+      decisionIdsBySection: Object.fromEntries(
+        Object.entries(decisionIdsBySection).map(([sectionId, decisionIds]) => [sectionId, uniqueStrings(decisionIds)])
+      ),
+      messageRefsBySection: Object.fromEntries(
+        Object.entries(messageRefsBySection).map(([sectionId, refs]) => [
+          sectionId,
+          refs.filter(
+            (ref, index, collection) =>
+              collection.findIndex(
+                (candidate) => candidate.type === ref.type && candidate.id === ref.id
+              ) === index
+          )
+        ])
+      ),
+      truthSummariesBySection: Object.fromEntries(
+        Object.entries(truthSummariesBySection).map(([sectionId, summaries]) => [sectionId, uniqueStrings(summaries)])
+      )
+    };
+  }
+
+  private async loadRelatedMessageRefs(projectId: string, relatedLinks: Array<{ linkType: string; linkRefId: string }>) {
+    const messageIds = relatedLinks.filter((link) => link.linkType === "message").map((link) => link.linkRefId);
+    const threadIds = relatedLinks.filter((link) => link.linkType === "thread").map((link) => link.linkRefId);
+
+    const [messages, threads] = await Promise.all([
+      messageIds.length
+        ? this.prisma.communicationMessage.findMany({
+            where: {
+              projectId,
+              id: {
+                in: messageIds
+              }
+            }
+          })
+        : Promise.resolve([]),
+      threadIds.length
+        ? this.prisma.communicationThread.findMany({
+            where: {
+              projectId,
+              id: {
+                in: threadIds
+              }
+            }
+          })
+        : Promise.resolve([])
+    ]);
+
+    return [
+      ...messages.map((message) => ({
+        type: "message" as const,
+        id: message.id,
+        senderLabel: message.senderLabel,
+        sentAt: message.sentAt.toISOString(),
+        threadId: message.threadId
+      })),
+      ...threads.map((thread) => ({
+        type: "thread" as const,
+        id: thread.id,
+        subject: thread.subject ?? null,
+        lastMessageAt: thread.lastMessageAt?.toISOString() ?? null
+      }))
+    ];
+  }
+
+  private async filterClientSafeBrainLinks(
+    projectId: string,
+    links: Array<{
+      brainNodeId: string;
+      relationship: string;
+      brainNode: {
+        id: string;
+        title: string;
+        nodeType: string;
+        status: string;
+      };
+    }>
+  ) {
+    const nodeIds = uniqueStrings(links.map((link) => link.brainNodeId));
+    if (nodeIds.length === 0) {
+      return [];
+    }
+
+    const graphLinks = await this.prisma.brainSectionLink.findMany({
+      where: {
+        projectId,
+        brainNodeId: {
+          in: nodeIds
+        }
+      },
+      include: {
+        documentSection: {
+          include: {
+            documentVersion: {
+              include: {
+                document: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const safeNodeIds = new Set(
+      nodeIds.filter((nodeId) => {
+        const nodeLinks = graphLinks.filter((link) => link.brainNodeId === nodeId);
+        return (
+          nodeLinks.length > 0 &&
+          nodeLinks.every((link) => link.documentSection.documentVersion.document.visibility === "shared_with_client")
+        );
+      })
+    );
+
+    return links.filter((link) => safeNodeIds.has(link.brainNodeId));
+  }
+
+  private toDocumentListItem(
+    document: {
+      id: string;
+      projectId: string;
+      title: string;
+      kind: string;
+      visibility: DocumentVisibility;
+      currentVersionId: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    currentVersion:
+      | {
+          id: string;
+          status: string;
+          parseRevision: number;
+          parseConfidence: Prisma.Decimal | null;
+          sourceLabel: string | null;
+          createdAt: Date;
+          processedAt: Date | null;
+        }
+      | undefined
+  ) {
+    return {
+      id: document.id,
+      projectId: document.projectId,
+      title: document.title,
+      kind: document.kind,
+      visibility: document.visibility,
+      createdAt: document.createdAt.toISOString(),
+      updatedAt: document.updatedAt.toISOString(),
+      parseStatus: currentVersion?.status ?? null,
+      lastProcessedAt: currentVersion?.processedAt?.toISOString() ?? null,
+      currentVersion: currentVersion ? this.toVersionSummary(currentVersion, true) : null
+    };
+  }
+
+  private toDocumentIdentity(document: {
+    id: string;
+    projectId: string;
+    title: string;
+    kind: string;
+    visibility: DocumentVisibility;
+    currentVersionId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: document.id,
+      projectId: document.projectId,
+      title: document.title,
+      kind: document.kind,
+      visibility: document.visibility,
+      currentVersionId: document.currentVersionId,
+      createdAt: document.createdAt.toISOString(),
+      updatedAt: document.updatedAt.toISOString()
+    };
+  }
+
+  private toVersionSummary(
+    version: {
+      id: string;
+      status: string;
+      parseRevision: number;
+      parseConfidence: Prisma.Decimal | string | null;
+      sourceLabel: string | null;
+      createdAt: Date;
+      processedAt: Date | null;
+    },
+    isCurrent: boolean
+  ) {
+    return {
+      id: version.id,
+      status: version.status,
+      parseRevision: version.parseRevision,
+      parseConfidence: version.parseConfidence ? Number(version.parseConfidence) : null,
+      sourceLabel: version.sourceLabel,
+      createdAt: version.createdAt.toISOString(),
+      processedAt: version.processedAt?.toISOString() ?? null,
+      isCurrent
+    };
+  }
+
+  private buildCitationLabel(documentTitle: string, headingPath: string[], pageNumber: number | null, anchorId: string) {
+    const headingLabel = headingPath.length > 0 ? headingPath.join(" > ") : anchorId;
+    const pageLabel = pageNumber ? `p.${pageNumber}` : "section";
+    return `${documentTitle} · ${pageLabel} · ${headingLabel}`;
+  }
+
+  private toHighlight(
+    documentId: string,
+    documentTitle: string,
+    documentVersionId: string,
+    section: {
+      id: string;
+      anchorId: string;
+      pageNumber: number | null;
+      headingPath: string[];
+    },
+    citationId?: string,
+    citationType?: string,
+    chunkId?: string | null
+  ): HighlightReadModel & { openTarget: ReturnType<DocumentService["buildDocumentSectionOpenTarget"]> } {
+    return {
+      citationId,
+      citationType,
+      refId: chunkId ?? section.id,
+      sectionId: section.id,
+      anchorId: section.anchorId,
+      pageNumber: section.pageNumber,
+      chunkId: chunkId ?? null,
+      citationLabel: this.buildCitationLabel(documentTitle, section.headingPath, section.pageNumber, section.anchorId),
+      openTarget: this.buildDocumentSectionOpenTarget(documentId, documentVersionId, section.anchorId, section.pageNumber)
+    };
+  }
+
+  private buildDocumentSectionOpenTarget(
+    documentId: string,
+    documentVersionId: string,
+    anchorId: string,
+    pageNumber: number | null
+  ) {
+    return {
+      targetType: "document_section" as const,
+      targetRef: {
+        documentId,
+        documentVersionId,
+        anchorId,
+        pageNumber: pageNumber ?? undefined
+      }
+    };
+  }
+
+  private buildBrainNodeOpenTarget(nodeId: string, artifactVersionId?: string) {
+    return {
+      targetType: "brain_node" as const,
+      targetRef: {
+        nodeId,
+        artifactVersionId
+      }
+    };
+  }
+
+  private buildChangeProposalOpenTarget(proposalId: string) {
+    return {
+      targetType: "change_proposal" as const,
+      targetRef: {
+        proposalId
+      }
+    };
+  }
+
+  private buildDecisionOpenTarget(decisionId: string) {
+    return {
+      targetType: "decision_record" as const,
+      targetRef: {
+        decisionId
+      }
+    };
+  }
+
+  private buildThreadOpenTarget(threadId: string) {
+    return {
+      targetType: "thread" as const,
+      targetRef: {
+        threadId
+      }
+    };
   }
 
   private clientDocumentFilter(projectRole: string) {

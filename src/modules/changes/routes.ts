@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
-import { authGuard, requireManager } from "../../app/auth.js";
+import { authGuard, requireManager, requireWorkspaceRole } from "../../app/auth.js";
 import { createProposalSchema, proposalParamsSchema } from "./schemas.js";
 
 export const registerChangeProposalRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     "/projects/:projectId/change-proposals",
     authGuard(async (request) => {
+      requireWorkspaceRole(request, ["manager", "dev"]);
       const { projectId } = proposalParamsSchema.omit({ proposalId: true }).parse(request.params);
       const proposals = await request.appContext.services.changeProposalService.list(
         projectId,
@@ -33,6 +34,7 @@ export const registerChangeProposalRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     "/projects/:projectId/change-proposals/:proposalId",
     authGuard(async (request) => {
+      requireWorkspaceRole(request, ["manager", "dev"]);
       const params = proposalParamsSchema.parse(request.params);
       const proposal = await request.appContext.services.changeProposalService.get(
         params.projectId,

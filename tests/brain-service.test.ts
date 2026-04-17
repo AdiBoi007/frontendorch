@@ -273,6 +273,7 @@ describe("BrainService", () => {
     expect(result.clarifiedBrief).toBeNull();
     expect(result.acceptedDecisions).toEqual([]);
     expect(result.recentAcceptedChanges).toEqual([]);
-    expect(result.currentBrain?.payload.evidenceRefs).toEqual([{ documentId: "doc-shared", excerpt: "Shared excerpt" }]);
+    expect(result.currentBrain).not.toBeNull();
+    expect(result.currentBrain!.payload!.evidenceRefs).toEqual([{ documentId: "doc-shared", excerpt: "Shared excerpt" }]);
   });
 });

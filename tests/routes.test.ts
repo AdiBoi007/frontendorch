@@ -56,14 +56,51 @@ function createContext() {
 
   const documentService = {
     uploadFile: vi.fn(async () => ({ documentId: "doc-1", documentVersionId: "ver-1", status: "pending" })),
-    listDocuments: vi.fn(async () => [{ id: "doc-1" }]),
-    getDocument: vi.fn(async () => ({ id: "doc-1" })),
+    listDocuments: vi.fn(async () => ({
+      items: [{ id: "doc-1" }],
+      meta: { page: 1, pageSize: 25, totalCount: 1, totalPages: 1, hasMore: false }
+    })),
+    getDocument: vi.fn(async () => ({
+      id: "doc-1",
+      currentVersion: { id: "ver-1", status: "ready", isCurrent: true },
+      versions: [{ id: "ver-1", status: "ready", isCurrent: true }]
+    })),
     getViewerPayload: vi.fn(async () => ({
       document: { id: "doc-1", title: "Core PRD", kind: "prd", currentVersionId: "ver-1" },
       version: { id: "ver-1", status: "ready" },
-      sections: [{ sectionId: "sec-1", anchorId: "overview-1", text: "Hello", changeMarkers: [] }]
+      viewerState: { documentId: "doc-1", documentVersionId: "ver-1", anchorId: "overview-1", pageNumber: 1 },
+      selected: { source: "anchor", documentId: "doc-1", documentVersionId: "ver-1", sectionId: "sec-1", anchorId: "overview-1", pageNumber: 1, chunkId: null },
+      highlight: null,
+      sections: [{ sectionId: "sec-1", anchorId: "overview-1", text: "Hello", changeMarkers: [] }],
+      meta: { page: 1, pageSize: 50, totalCount: 1, totalPages: 1, hasMore: false }
     })),
-    getAnchor: vi.fn(async () => ({ section: { anchorId: "overview-1" } })),
+    getAnchor: vi.fn(async () => ({
+      viewerState: { documentId: "doc-1", documentVersionId: "ver-1", anchorId: "overview-1", pageNumber: 1 },
+      selected: { source: "anchor", documentId: "doc-1", documentVersionId: "ver-1", sectionId: "sec-1", anchorId: "overview-1", pageNumber: 1, chunkId: null },
+      section: { anchorId: "overview-1" }
+    })),
+    searchDocument: vi.fn(async () => ({
+      items: [{ sectionId: "sec-1", anchorId: "overview-1", snippet: "hello", openTarget: { targetType: "document_section", targetRef: { documentId: "doc-1", documentVersionId: "ver-1", anchorId: "overview-1" } } }],
+      meta: { query: "hello", count: 1, versionId: "ver-1", limited: false }
+    })),
+    getAnchorProvenance: vi.fn(async () => ({
+      selectedSection: { anchorId: "overview-1", hasCurrentTruthOverlay: true, currentTruthSummary: ["Updated by accepted change"] },
+      supportingSections: [],
+      linkedChanges: [],
+      linkedBrainNodes: [],
+      linkedDecisions: [],
+      linkedMessageRefs: [],
+      currentTruth: { differsFromSource: true, summaries: ["Updated by accepted change"] },
+      openTargets: { selectedSection: { targetType: "document_section", targetRef: { documentId: "doc-1", documentVersionId: "ver-1", anchorId: "overview-1" } }, supportingSections: [] }
+    })),
+    getMessageEvidence: vi.fn(async () => ({
+      message: { id: "msg-1", threadId: "thread-1", bodyText: "Need this change" },
+      thread: { id: "thread-1", subject: "Client request" },
+      linkedDocuments: [{ sectionId: "sec-1", anchorId: "overview-1" }],
+      linkedChanges: [],
+      linkedDecisions: [],
+      openTargets: { thread: { targetType: "thread", targetRef: { threadId: "thread-1" } }, documents: [] }
+    })),
     reprocess: vi.fn(async () => ({ ok: true }))
   };
 
@@ -194,6 +231,96 @@ describe("route contracts", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().data.document.id).toBe("doc-1");
+  });
+
+  it("lists documents with pagination metadata", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/documents?page=2&pageSize=10",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().meta).toMatchObject({
+      page: 1,
+      pageSize: 25,
+      totalCount: 1
+    });
+    expect(context.services.documentService.listDocuments).toHaveBeenCalledWith(
+      "37e6d602-cc1b-4cc9-bc6c-5547241fbf90",
+      "user-1",
+      { page: 2, pageSize: 10 }
+    );
+  });
+
+  it("supports document search", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/documents/3322717f-2c10-4239-b525-6fbc9158f4fb/search?q=hello&limit=5",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data[0].anchorId).toBe("overview-1");
+    expect(context.services.documentService.searchDocument).toHaveBeenCalledWith(
+      "37e6d602-cc1b-4cc9-bc6c-5547241fbf90",
+      "3322717f-2c10-4239-b525-6fbc9158f4fb",
+      "user-1",
+      { q: "hello", limit: 5 }
+    );
+  });
+
+  it("supports anchor provenance lookup", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/documents/3322717f-2c10-4239-b525-6fbc9158f4fb/anchors/overview-1/provenance",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.currentTruth.differsFromSource).toBe(true);
+    expect(context.services.documentService.getAnchorProvenance).toHaveBeenCalled();
+  });
+
+  it("serves message evidence only for internal roles", async () => {
+    const managerResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/messages/3322717f-2c10-4239-b525-6fbc9158f4fb",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(managerResponse.statusCode).toBe(200);
+    expect(managerResponse.json().data.message.id).toBe("msg-1");
+
+    const clientResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/messages/3322717f-2c10-4239-b525-6fbc9158f4fb",
+      headers: {
+        authorization: `Bearer ${createToken("client")}`
+      }
+    });
+
+    expect(clientResponse.statusCode).toBe(403);
+  });
+
+  it("blocks clients from raw change proposal detail routes", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/change-proposals/3322717f-2c10-4239-b525-6fbc9158f4fb",
+      headers: {
+        authorization: `Bearer ${createToken("client")}`
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
   });
 
   it("rejects dev users from manager-only change acceptance", async () => {
