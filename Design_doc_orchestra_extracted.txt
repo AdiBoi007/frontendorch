@@ -1,0 +1,162 @@
+SRS for orchestra:
+Deadline : Sunday 19th April 
+
+Features to be delivered:
+
+1.Product brain (Upload docs)
+2.Socrates 
+3. Live doc viewer 
+4. Dashboard(Product wise + general) + team headcount and breakdown(also product wise + general)
+
+Actors:
+1. PM/CEO/CTO/MANAGER :  has all the features given above 
+2. DEVs: almost similar number of features as the pm (but need to limited to what extent or add any features here ??)
+3. Client: Live preview if possible (else flowchart view i suppose)
+Alrighty rn what we have is : https://orchestra-light.vercel.app/pm/dashboard
+This is a general translation between the docs provided here : https://docs.google.com/document/d/1iX8VczC1QQmJqS7OvHld7iA2MF91_vP385g28xjSdXc/edit?tab=t.0#heading=h.n9jkgrneoqnv  and how the system MAY be designed overall. However, given the current design is a little too overstimulating with the sheer number of things to look at (too much text/numbers/graphs to look at)  we will now hyperoptimize the system on the following basis:
+
+The proposed system design shall be one that is ai centric , minimal , picking up colours/design/fonts from the previous one (  https://orchestra-light.vercel.app/pm/dashboard ) but making the system look as follows:
+
+
+
+Disclaimer : the picture given above and through this document are only given as reference for what the system could look like (excluding colours/fonts/texts which are picked up from the previous website since all 3 of us have approved it). These images ARE NOT to be used to incorporate features or take inspiration for the final product. These are to be used as plain system architecture.
+Proposal 1: Nav bar
+Proposal 2: Project + PM dashboard 
+ The system has a general MINIMAL  dashboard which is to made available both project wise and a general one. To be inspired from the following figures:
+Proposal 4: An AI centric system 
+
+Socrates on the left and the system on the right:
+1. User clicks page on the nav bar socrates gains context of what page you’re on and gives suggestive prompts under the sending button (see image for context)
+
+2. You ask socrates abt something (say when was this feat mentioned in what doc and it opens up said page on the right)
+This system design is especially beneficially to make the product as usable and user friendly and easy to use , as possibl. The entire navigation is plain and simple to navigate through and understand such that even a 5 yo can go through our entire system.
+Proposal 5: MANNAN’S doc idea
+Have a system such that on the right hand side you have the doc , left socrates and as and when you click over a statement in the doc/prd it gives you context from where it was fetched : pinpointing the user to look exactly where required.
+Proposal 6: The brain to look something as follows
+Proposal 7: official workflow:
+Next:
+Next:
+[Ai generated content below: src claude]
+Proposal 8: Backend architecture and database design + deployment:
+Orchestra — End-to-End Backend Architecture
+Stack Decisions
+Runtime: Node.js (TypeScript) with Fastify or Express
+AI Layer: Anthropic Claude API (Sonnet 4) via direct calls
+Vector DB: Pgvector (Postgres extension) — keeps infra unified
+Primary DB: PostgreSQL (Supabase or self-hosted)
+Cache: Redis (session, rate limits, doc chunk hot cache)
+File Storage: S3-compatible (Supabase Storage or AWS S3)
+Queue: BullMQ (Redis-backed) for async doc ingestion
+Auth: JWT + refresh tokens, role-based (PM/Dev/Client)
+Realtime: Supabase Realtime or Socket.io for live doc viewer
+Database Design
+organisations
+id, name, slug, created_at
+users
+id, org_id (FK), name, email, password_hash, role (enum: pm | dev | client), created_at
+projects
+id, org_id (FK), name, description, status (enum: active | paused | complete), created_at
+project_members
+id, project_id (FK), user_id (FK), role_in_project, joined_at
+documents
+id, project_id (FK), uploaded_by (FK → users), title, file_key (S3 path), file_type (pdf/docx/txt), status (enum: pending | processing | ready | failed), created_at
+document_chunks ← Brain/RAG backbone
+id, document_id (FK), chunk_index, content (text), embedding (vector 1536), page_number, token_count, created_at
+socrates_sessions
+id, user_id (FK), project_id (FK, nullable), page_context (e.g. "dashboard" | "brain" | "flow"), created_at
+socrates_messages
+id, session_id (FK), role (enum: user | assistant), content, cited_chunk_ids (uuid[]), suggested_prompts (jsonb), created_at
+tasks
+id, project_id (FK), assignee_id (FK → users), title, description, status (enum: planned | in_progress | review | done), priority, source(enum: manual | socrates | jira_sync), external_id (Jira/GitHub ref), created_at, updated_at
+task_events ← audit trail / dashboard feed
+id, task_id (FK), triggered_by (FK → users), event_type, old_value (jsonb), new_value (jsonb), created_at
+features
+id, project_id (FK), name, status, doc_reference_ids (uuid[]), created_at
+dashboard_snapshots ← precomputed for perf
+id, project_id (FK, nullable), org_id (FK), scope (enum: project | general), payload (jsonb), computed_at
+API Layer — Route Groups
+Auth /api/auth
+POST /signup, POST /login, POST /refresh, POST /logout
+Middleware: JWT verify, role guard
+Projects /api/projects
+GET / — list all projects for org
+POST / — create project (PM only)
+GET /:id — project detail
+PATCH /:id — update status/meta
+GET /:id/members — team headcount + roles
+POST /:id/members — add dev/client to project
+Brain (Documents) /api/brain
+POST /upload — multipart upload → saves to S3, enqueues ingestion job
+GET /:projectId/docs — list docs with status
+GET /doc/:docId — fetch doc metadata + signed S3 URL for viewer
+DELETE /doc/:docId — soft delete
+Socrates /api/socrates
+POST /session — create session (passes page_context, project_id)
+POST /session/:id/message — send message → triggers RAG → streams response
+GET /session/:id/messages — full history
+GET /session/:id/suggestions — page-aware suggestive prompts (3–5 per page)
+Tasks /api/tasks
+GET /?projectId= — filtered task list
+POST / — create task
+PATCH /:id — update status/assignee
+GET /:id/events — audit trail
+Dashboard /api/dashboard
+GET /general — org-wide: task velocity, team headcount, feature status breakdown
+GET /project/:id — project-specific: same metrics scoped
+Both return precomputed snapshot + delta since last compute
+Features /api/features
+GET /?projectId=
+POST /
+PATCH /:id
+GET /:id/doc-references — linked doc chunks (for Mannan's click-to-source feature)
+Realtime /ws
+Socket rooms per project_id — broadcasts task updates, doc processing status, Socrates streaming tokens
+Background Workers (BullMQ)
+doc-ingestion queue
+Pull file from S3
+Parse (pdf-parse / mammoth / raw txt)
+Chunk by token window (512 tokens, 50 overlap)
+Embed each chunk via text-embedding-3-small (OpenAI) or Voyage (cheaper)
+Upsert into document_chunks with pgvector
+Update documents.status = 'ready'
+Emit realtime event to frontend
+snapshot-refresh cron (every 15 min)
+Recompute dashboard_snapshots for all active projects
+Invalidate Redis cache keys
+suggestion-precompute worker
+Triggered on page navigation event
+Pulls top-k chunks relevant to current page context
+Precomputes 3–5 Socrates suggestions, stores in session
+Socrates RAG Pipeline (per message)
+Receive user_message + session_id
+Fetch page_context + project_id from session
+Embed user message → query_vector
+pgvector similarity search: SELECT * FROM document_chunks WHERE project_id = ? ORDER BY embedding <=> query_vector LIMIT 8
+Build context string from top-k chunks (include document_id, page_number for citations)
+Construct Claude prompt: system (role + constraints) + context + conversation history (last 10 turns) + user message
+Stream response back via SSE/WebSocket
+Parse response for cited_chunk_ids → store in socrates_messages
+Frontend uses cited_chunk_ids to highlight + navigate to exact doc page (Mannan's feature)
+Infra / Deployment
+API server: Railway or Render (Node.js container)
+DB: Supabase (Postgres + pgvector + Realtime + Storage in one)
+Queue: Upstash Redis (BullMQ)
+Worker: Separate Railway service for ingestion worker
+Env secrets: Doppler or Railway env vars
+CDN: Cloudflare in front of API + S3 signed URLs with 1hr TTL
+Monitoring: Sentry (errors) + Axiom or Logtail (structured logs)
+Key Design Decisions
+Pgvector over Pinecone — keeps vector search and relational queries in one DB, simplifies joins (e.g. "which tasks reference this chunk")
+Snapshot pattern for dashboard — avoids expensive real-time aggregation on every load; refreshes every 15 min with a delta layer for live updates
+Page context on Socrates — session stores current page_context string so suggestions are scoped to what the user is looking at, not generic
+Chunk-level citations — every Socrates response stores which chunk IDs it used, enabling the click-to-source doc navigation Mannan proposed
+BullMQ over Lambda — more predictable for long-running ingestion jobs, retries built-in, visible queue dashboard
+
+--- TABLE ---
+Current | Proposed
+Problems: toooo much content/too big for the page ..adds to overstimulation of the end user | -->
+
+        On expansion 
+The proposed design is clean, minimal and takes way less space ..expands only on hovering over the nav bar. Tends to be almost invisible until required
+--- END TABLE ---
+

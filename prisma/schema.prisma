@@ -1,0 +1,730 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  owner
+  admin
+  member
+}
+
+enum WorkspaceRoleDefault {
+  manager
+  dev
+  client
+}
+
+enum ProjectStatus {
+  active
+  paused
+  archived
+}
+
+enum ProjectRole {
+  manager
+  dev
+  client
+}
+
+enum DocumentKind {
+  prd
+  srs
+  meeting_note
+  call_note
+  reference
+  internal_note
+  other
+}
+
+enum DocumentVisibility {
+  internal
+  shared_with_client
+}
+
+enum DocumentVersionStatus {
+  pending
+  processing
+  ready
+  partial
+  failed
+}
+
+enum ArtifactType {
+  source_package
+  clarified_brief
+  brain_graph
+  product_brain
+  dashboard_snapshot
+}
+
+enum ArtifactStatus {
+  draft
+  accepted
+  superseded
+  failed
+}
+
+enum BrainNodeType {
+  module
+  flow
+  constraint
+  integration
+  decision
+  unknown
+  source_cluster
+}
+
+enum BrainNodeStatus {
+  active
+  unresolved
+  changed
+  deprecated
+}
+
+enum BrainNodePriority {
+  high
+  medium
+  low
+}
+
+enum BrainEdgeType {
+  depends_on
+  relates_to
+  changed_by
+  supported_by
+  references
+}
+
+enum BrainSectionRelationship {
+  supports
+  defines
+  changes
+  clarifies
+  contradicts
+}
+
+enum ProposalType {
+  requirement_change
+  decision_change
+  clarification
+  contradiction_resolution
+}
+
+enum ProposalStatus {
+  detected
+  needs_review
+  accepted
+  rejected
+  superseded
+}
+
+enum ChangeLinkType {
+  message
+  thread
+  document_section
+  brain_node
+}
+
+enum ChangeRelationship {
+  source
+  affected
+  evidence
+}
+
+enum DecisionStatus {
+  open
+  accepted
+  rejected
+  superseded
+}
+
+enum CommunicationMessageType {
+  user
+  system
+  bot
+  file_share
+  note
+  other
+}
+
+enum JobRunStatus {
+  pending
+  running
+  completed
+  failed
+  dead
+}
+
+enum SocratesPageContext {
+  dashboard_general
+  dashboard_project
+  brain_overview
+  brain_graph
+  doc_viewer
+  client_view
+}
+
+enum SocratesSelectedRefType {
+  document
+  document_section
+  brain_node
+  change_proposal
+  decision_record
+  dashboard_scope
+}
+
+enum SocratesMessageRole {
+  user
+  assistant
+}
+
+enum SocratesResponseStatus {
+  streaming
+  completed
+  failed
+}
+
+enum SocratesCitationType {
+  document_section
+  document_chunk
+  message
+  brain_node
+  product_brain
+  change_proposal
+  decision_record
+  dashboard_snapshot
+}
+
+enum SocratesOpenTargetType {
+  document_section
+  message
+  thread
+  brain_node
+  change_proposal
+  decision_record
+  dashboard_filter
+}
+
+enum DashboardSnapshotScope {
+  general
+  project
+}
+
+model Organization {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users             User[]
+  projects          Project[]
+  tokens            RefreshToken[]
+  audits            AuditEvent[]
+  dashboardSnapshots DashboardSnapshot[]
+
+  @@map("organizations")
+}
+
+model User {
+  id                   String                @id @default(uuid()) @db.Uuid
+  orgId                String                @map("org_id") @db.Uuid
+  email                String
+  passwordHash         String?               @map("password_hash")
+  displayName          String                @map("display_name")
+  jobTitle             String?               @map("job_title")
+  globalRole           GlobalRole            @map("global_role")
+  workspaceRoleDefault WorkspaceRoleDefault  @map("workspace_role_default")
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization         Organization          @relation(fields: [orgId], references: [id])
+  refreshTokens        RefreshToken[]
+  createdProjects      Project[]             @relation("created_projects")
+  memberships          ProjectMember[]
+  uploadedDocuments    Document[]            @relation("uploaded_documents")
+  uploadedVersions     DocumentVersion[]     @relation("uploaded_versions")
+  artifacts            ArtifactVersion[]     @relation("created_artifacts")
+  acceptedProposals    SpecChangeProposal[]  @relation("accepted_proposals")
+  acceptedDecisions    DecisionRecord[]      @relation("accepted_decisions")
+  audits               AuditEvent[]
+  socrateSessions      SocratesSession[]     @relation("socrates_sessions")
+
+  @@unique([orgId, email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  orgId      String       @map("org_id") @db.Uuid
+  tokenHash  String       @unique @map("token_hash")
+  expiresAt  DateTime     @map("expires_at") @db.Timestamptz(6)
+  revokedAt  DateTime?    @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  user       User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+model Project {
+  id            String            @id @default(uuid()) @db.Uuid
+  orgId         String            @map("org_id") @db.Uuid
+  name          String
+  slug          String
+  description   String?
+  status        ProjectStatus
+  previewUrl    String?           @map("preview_url")
+  createdBy     String            @map("created_by") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization  Organization      @relation(fields: [orgId], references: [id])
+  creator       User              @relation("created_projects", fields: [createdBy], references: [id])
+  members       ProjectMember[]
+  documents     Document[]
+  documentVersions DocumentVersion[]
+  documentSections DocumentSection[]
+  documentChunks DocumentChunk[]
+  artifacts     ArtifactVersion[]
+  brainNodes    BrainNode[]
+  brainEdges    BrainEdge[]
+  brainSectionLinks BrainSectionLink[]
+  changeProposals SpecChangeProposal[]
+  changeLinks   SpecChangeLink[]
+  decisions     DecisionRecord[]
+  auditEvents   AuditEvent[]
+  threads            CommunicationThread[]
+  messages           CommunicationMessage[]
+  socrateSessions    SocratesSession[]
+  dashboardSnapshots DashboardSnapshot[]
+
+  @@unique([orgId, slug])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id                  String      @id @default(uuid()) @db.Uuid
+  projectId           String      @map("project_id") @db.Uuid
+  userId              String      @map("user_id") @db.Uuid
+  projectRole         ProjectRole @map("project_role")
+  roleInProject       String?     @map("role_in_project")
+  allocationPercent   Int?        @map("allocation_percent")
+  weeklyCapacityHours Int?        @map("weekly_capacity_hours")
+  isActive            Boolean     @default(true) @map("is_active")
+  joinedAt            DateTime    @default(now()) @map("joined_at") @db.Timestamptz(6)
+  updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project             Project     @relation(fields: [projectId], references: [id])
+  user                User        @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model Document {
+  id               String              @id @default(uuid()) @db.Uuid
+  projectId        String              @map("project_id") @db.Uuid
+  kind             DocumentKind
+  title            String
+  currentVersionId String?             @map("current_version_id") @db.Uuid
+  uploadedBy       String              @map("uploaded_by") @db.Uuid
+  visibility       DocumentVisibility
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project          Project             @relation(fields: [projectId], references: [id])
+  uploader         User                @relation("uploaded_documents", fields: [uploadedBy], references: [id])
+  versions         DocumentVersion[]
+
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id               String                @id @default(uuid()) @db.Uuid
+  documentId       String                @map("document_id") @db.Uuid
+  projectId        String                @map("project_id") @db.Uuid
+  fileKey          String                @map("file_key")
+  checksumSha256   String                @map("checksum_sha256")
+  mimeType         String                @map("mime_type")
+  fileSize         BigInt                @map("file_size")
+  status           DocumentVersionStatus
+  parseRevision    Int                   @default(1) @map("parse_revision")
+  parseConfidence  Decimal?              @map("parse_confidence") @db.Decimal(4, 3)
+  sourceLabel      String?               @map("source_label")
+  parseWarningJson Json?                 @map("parse_warning_json")
+  uploadedBy       String                @map("uploaded_by") @db.Uuid
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  processedAt      DateTime?             @map("processed_at") @db.Timestamptz(6)
+  document         Document              @relation(fields: [documentId], references: [id])
+  project          Project               @relation(fields: [projectId], references: [id])
+  uploader         User                  @relation("uploaded_versions", fields: [uploadedBy], references: [id])
+  sections         DocumentSection[]
+  chunks           DocumentChunk[]
+
+  @@unique([documentId, checksumSha256])
+  @@map("document_versions")
+}
+
+model DocumentSection {
+  id                String      @id @default(uuid()) @db.Uuid
+  documentVersionId String      @map("document_version_id") @db.Uuid
+  projectId         String      @map("project_id") @db.Uuid
+  parseRevision     Int         @default(1) @map("parse_revision")
+  sectionKey        String      @map("section_key")
+  headingPath       String[]    @map("heading_path")
+  pageNumber        Int?        @map("page_number")
+  pageStart         Int?        @map("page_start")
+  pageEnd           Int?        @map("page_end")
+  anchorId          String      @map("anchor_id")
+  anchorText        String?     @map("anchor_text")
+  normalizedText    String      @map("normalized_text")
+  charStart         Int?        @map("char_start")
+  charEnd           Int?        @map("char_end")
+  orderIndex        Int         @map("order_index")
+  metadataJson      Json?       @map("metadata_json")
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
+  project           Project     @relation(fields: [projectId], references: [id])
+  chunks            DocumentChunk[]
+  brainLinks        BrainSectionLink[]
+
+  @@unique([documentVersionId, parseRevision, anchorId])
+  @@unique([documentVersionId, parseRevision, sectionKey])
+  @@map("document_sections")
+}
+
+model DocumentChunk {
+  id                String                    @id @default(uuid()) @db.Uuid
+  documentVersionId String                    @map("document_version_id") @db.Uuid
+  sectionId         String?                   @map("section_id") @db.Uuid
+  projectId         String                    @map("project_id") @db.Uuid
+  parseRevision     Int                       @default(1) @map("parse_revision")
+  chunkIndex        Int                       @map("chunk_index")
+  content           String
+  contextualContent String?                   @map("contextual_content")
+  lexicalContent    String                    @map("lexical_content")
+  embedding         Unsupported("vector(1536)")?
+  tokenCount        Int                       @map("token_count")
+  pageNumber        Int?                      @map("page_number")
+  metadataJson      Json?                     @map("metadata_json")
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  documentVersion   DocumentVersion           @relation(fields: [documentVersionId], references: [id])
+  section           DocumentSection?          @relation(fields: [sectionId], references: [id])
+  project           Project                   @relation(fields: [projectId], references: [id])
+
+  @@unique([documentVersionId, parseRevision, chunkIndex])
+  @@map("document_chunks")
+}
+
+model ArtifactVersion {
+  id              String         @id @default(uuid()) @db.Uuid
+  projectId       String         @map("project_id") @db.Uuid
+  artifactType    ArtifactType   @map("artifact_type")
+  versionNumber   Int            @map("version_number")
+  parentVersionId String?        @map("parent_version_id") @db.Uuid
+  status          ArtifactStatus
+  sourceRefsJson  Json?          @map("source_refs_json")
+  payloadJson     Json           @map("payload_json")
+  changeSummary   String?        @map("change_summary")
+  createdBy       String?        @map("created_by") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  acceptedAt      DateTime?      @map("accepted_at") @db.Timestamptz(6)
+  project         Project        @relation(fields: [projectId], references: [id])
+  creator         User?          @relation("created_artifacts", fields: [createdBy], references: [id])
+  parentVersion   ArtifactVersion? @relation("artifact_parent", fields: [parentVersionId], references: [id])
+  childVersions   ArtifactVersion[] @relation("artifact_parent")
+  brainNodes      BrainNode[]
+  brainEdges      BrainEdge[]
+  brainSectionLinks BrainSectionLink[]
+  acceptedProposals SpecChangeProposal[] @relation("accepted_brain_versions")
+
+  @@unique([projectId, artifactType, versionNumber])
+  @@map("artifact_versions")
+}
+
+model BrainNode {
+  id                String            @id @default(uuid()) @db.Uuid
+  artifactVersionId String            @map("artifact_version_id") @db.Uuid
+  projectId         String            @map("project_id") @db.Uuid
+  nodeKey           String            @map("node_key")
+  nodeType          BrainNodeType     @map("node_type")
+  title             String
+  summary           String
+  status            BrainNodeStatus
+  priority          BrainNodePriority?
+  metadataJson      Json?             @map("metadata_json")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  artifactVersion   ArtifactVersion   @relation(fields: [artifactVersionId], references: [id])
+  project           Project           @relation(fields: [projectId], references: [id])
+  fromEdges         BrainEdge[]       @relation("brain_edge_from")
+  toEdges           BrainEdge[]       @relation("brain_edge_to")
+  sectionLinks      BrainSectionLink[]
+
+  @@unique([artifactVersionId, nodeKey])
+  @@map("brain_nodes")
+}
+
+model BrainEdge {
+  id                String          @id @default(uuid()) @db.Uuid
+  artifactVersionId String          @map("artifact_version_id") @db.Uuid
+  projectId         String          @map("project_id") @db.Uuid
+  fromNodeId        String          @map("from_node_id") @db.Uuid
+  toNodeId          String          @map("to_node_id") @db.Uuid
+  edgeType          BrainEdgeType   @map("edge_type")
+  weight            Decimal?        @db.Decimal(5, 2)
+  metadataJson      Json?           @map("metadata_json")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  artifactVersion   ArtifactVersion @relation(fields: [artifactVersionId], references: [id])
+  project           Project         @relation(fields: [projectId], references: [id])
+  fromNode          BrainNode       @relation("brain_edge_from", fields: [fromNodeId], references: [id])
+  toNode            BrainNode       @relation("brain_edge_to", fields: [toNodeId], references: [id])
+
+  @@unique([artifactVersionId, fromNodeId, toNodeId, edgeType])
+  @@map("brain_edges")
+}
+
+model BrainSectionLink {
+  id               String                    @id @default(uuid()) @db.Uuid
+  projectId        String                    @map("project_id") @db.Uuid
+  artifactVersionId String                   @map("artifact_version_id") @db.Uuid
+  brainNodeId      String                    @map("brain_node_id") @db.Uuid
+  documentSectionId String                   @map("document_section_id") @db.Uuid
+  relationship     BrainSectionRelationship
+  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  project          Project                   @relation(fields: [projectId], references: [id])
+  artifactVersion  ArtifactVersion           @relation(fields: [artifactVersionId], references: [id])
+  brainNode        BrainNode                 @relation(fields: [brainNodeId], references: [id])
+  documentSection  DocumentSection           @relation(fields: [documentSectionId], references: [id])
+
+  @@unique([artifactVersionId, brainNodeId, documentSectionId, relationship])
+  @@map("brain_section_links")
+}
+
+model SpecChangeProposal {
+  id                     String          @id @default(uuid()) @db.Uuid
+  projectId              String          @map("project_id") @db.Uuid
+  title                  String
+  summary                String
+  proposalType           ProposalType    @map("proposal_type")
+  status                 ProposalStatus
+  sourceMessageCount     Int             @default(0) @map("source_message_count")
+  oldUnderstandingJson   Json?           @map("old_understanding_json")
+  newUnderstandingJson   Json?           @map("new_understanding_json")
+  impactSummaryJson      Json?           @map("impact_summary_json")
+  externalEvidenceRefsJson Json?         @map("external_evidence_refs_json")
+  acceptedBrainVersionId String?         @map("accepted_brain_version_id") @db.Uuid
+  decisionRecordId       String?         @map("decision_record_id") @db.Uuid
+  acceptedBy             String?         @map("accepted_by") @db.Uuid
+  acceptedAt             DateTime?       @map("accepted_at") @db.Timestamptz(6)
+  createdAt              DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project                Project         @relation(fields: [projectId], references: [id])
+  acceptedBrainVersion   ArtifactVersion? @relation("accepted_brain_versions", fields: [acceptedBrainVersionId], references: [id])
+  decisionRecord         DecisionRecord? @relation(fields: [decisionRecordId], references: [id])
+  accepter               User?           @relation("accepted_proposals", fields: [acceptedBy], references: [id])
+  links                  SpecChangeLink[]
+
+  @@map("spec_change_proposals")
+}
+
+model SpecChangeLink {
+  id                   String             @id @default(uuid()) @db.Uuid
+  specChangeProposalId String             @map("spec_change_proposal_id") @db.Uuid
+  projectId            String             @map("project_id") @db.Uuid
+  linkType             ChangeLinkType     @map("link_type")
+  linkRefId            String             @map("link_ref_id")
+  relationship         ChangeRelationship
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  proposal             SpecChangeProposal @relation(fields: [specChangeProposalId], references: [id])
+  project              Project            @relation(fields: [projectId], references: [id])
+
+  @@unique([specChangeProposalId, linkType, linkRefId, relationship])
+  @@map("spec_change_links")
+}
+
+model DecisionRecord {
+  id            String         @id @default(uuid()) @db.Uuid
+  projectId     String         @map("project_id") @db.Uuid
+  title         String
+  statement     String
+  status        DecisionStatus
+  sourceSummary String?        @map("source_summary")
+  acceptedBy    String?        @map("accepted_by") @db.Uuid
+  acceptedAt    DateTime?      @map("accepted_at") @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project       Project        @relation(fields: [projectId], references: [id])
+  accepter      User?          @relation("accepted_decisions", fields: [acceptedBy], references: [id])
+  proposals     SpecChangeProposal[]
+
+  @@map("decision_records")
+}
+
+model CommunicationThread {
+  id                String      @id @default(uuid()) @db.Uuid
+  projectId         String      @map("project_id") @db.Uuid
+  providerThreadId  String      @map("provider_thread_id")
+  subject           String?
+  participantsJson  Json        @map("participants_json")
+  startedAt         DateTime?   @map("started_at") @db.Timestamptz(6)
+  lastMessageAt     DateTime?   @map("last_message_at") @db.Timestamptz(6)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project           Project     @relation(fields: [projectId], references: [id])
+  messages          CommunicationMessage[]
+
+  @@unique([projectId, providerThreadId])
+  @@map("communication_threads")
+}
+
+model CommunicationMessage {
+  id                String                  @id @default(uuid()) @db.Uuid
+  projectId         String                  @map("project_id") @db.Uuid
+  threadId          String                  @map("thread_id") @db.Uuid
+  providerMessageId String                  @map("provider_message_id")
+  senderLabel       String                  @map("sender_label")
+  senderExternalRef String?                 @map("sender_external_ref")
+  sentAt            DateTime                @map("sent_at") @db.Timestamptz(6)
+  bodyText          String                  @map("body_text")
+  bodyHtml          String?                 @map("body_html")
+  messageType       CommunicationMessageType @map("message_type")
+  replyToMessageId  String?                 @map("reply_to_message_id") @db.Uuid
+  rawMetadataJson   Json?                   @map("raw_metadata_json")
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  project           Project                 @relation(fields: [projectId], references: [id])
+  thread            CommunicationThread     @relation(fields: [threadId], references: [id])
+  replyTo           CommunicationMessage?   @relation("message_reply", fields: [replyToMessageId], references: [id])
+  replies           CommunicationMessage[]  @relation("message_reply")
+
+  @@unique([threadId, providerMessageId])
+  @@map("communication_messages")
+}
+
+model AuditEvent {
+  id          String      @id @default(uuid()) @db.Uuid
+  projectId   String?     @map("project_id") @db.Uuid
+  orgId       String      @map("org_id") @db.Uuid
+  actorUserId String?     @map("actor_user_id") @db.Uuid
+  eventType   String      @map("event_type")
+  entityType  String      @map("entity_type")
+  entityId    String?     @map("entity_id")
+  payloadJson Json        @map("payload_json")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  project     Project?    @relation(fields: [projectId], references: [id])
+  organization Organization @relation(fields: [orgId], references: [id])
+  actor       User?       @relation(fields: [actorUserId], references: [id])
+
+  @@map("audit_events")
+}
+
+model SocratesSession {
+  id              String                   @id @default(uuid()) @db.Uuid
+  projectId       String                   @map("project_id") @db.Uuid
+  userId          String                   @map("user_id") @db.Uuid
+  pageContext     SocratesPageContext       @map("page_context")
+  selectedRefType SocratesSelectedRefType? @map("selected_ref_type")
+  selectedRefId   String?                  @map("selected_ref_id") @db.Uuid
+  viewerStateJson Json?                    @map("viewer_state_json")
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project         Project                  @relation(fields: [projectId], references: [id])
+  user            User                     @relation("socrates_sessions", fields: [userId], references: [id])
+  messages        SocratesMessage[]
+  suggestions     SocratesSuggestion[]
+
+  @@index([projectId, pageContext])
+  @@map("socrates_sessions")
+}
+
+model SocratesMessage {
+  id             String                  @id @default(uuid()) @db.Uuid
+  sessionId      String                  @map("session_id") @db.Uuid
+  role           SocratesMessageRole
+  content        String
+  responseStatus SocratesResponseStatus? @map("response_status")
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  session        SocratesSession         @relation(fields: [sessionId], references: [id])
+  citations      SocratesCitation[]
+  openTargets    SocratesOpenTarget[]
+
+  @@index([sessionId])
+  @@index([sessionId, createdAt(sort: Desc)])
+  @@map("socrates_messages")
+}
+
+model SocratesCitation {
+  id                 String               @id @default(uuid()) @db.Uuid
+  assistantMessageId String               @map("assistant_message_id") @db.Uuid
+  projectId          String               @map("project_id") @db.Uuid
+  citationType       SocratesCitationType @map("citation_type")
+  refId              String               @map("ref_id") @db.Uuid
+  label              String
+  pageNumber         Int?                 @map("page_number")
+  confidence         Decimal?             @db.Decimal(4, 3)
+  orderIndex         Int                  @map("order_index")
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  assistantMessage   SocratesMessage      @relation(fields: [assistantMessageId], references: [id])
+
+  @@index([assistantMessageId])
+  @@map("socrates_citations")
+}
+
+model SocratesOpenTarget {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  assistantMessageId String                 @map("assistant_message_id") @db.Uuid
+  targetType         SocratesOpenTargetType @map("target_type")
+  targetPayloadJson  Json                   @map("target_payload_json")
+  orderIndex         Int                    @map("order_index")
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  assistantMessage   SocratesMessage        @relation(fields: [assistantMessageId], references: [id])
+
+  @@index([assistantMessageId])
+  @@map("socrates_open_targets")
+}
+
+model SocratesSuggestion {
+  id              String          @id @default(uuid()) @db.Uuid
+  sessionId       String          @map("session_id") @db.Uuid
+  pageContext     SocratesPageContext @map("page_context")
+  suggestionsJson Json            @map("suggestions_json")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt       DateTime?       @map("expires_at") @db.Timestamptz(6)
+  session         SocratesSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, pageContext])
+  @@index([sessionId, pageContext, expiresAt(sort: Desc)])
+  @@map("socrates_suggestions")
+}
+
+model DashboardSnapshot {
+  id          String                 @id @default(uuid()) @db.Uuid
+  projectId   String?                @map("project_id") @db.Uuid
+  orgId       String                 @map("org_id") @db.Uuid
+  scope       DashboardSnapshotScope
+  payloadJson Json                   @map("payload_json")
+  computedAt  DateTime               @map("computed_at") @db.Timestamptz(6)
+  organization Organization          @relation(fields: [orgId], references: [id])
+  project     Project?               @relation(fields: [projectId], references: [id])
+
+  @@index([orgId, scope, computedAt(sort: Desc)])
+  @@map("dashboard_snapshots")
+}
+
+model JobRun {
+  id             String       @id @default(uuid()) @db.Uuid
+  jobType        String       @map("job_type")
+  status         JobRunStatus
+  idempotencyKey String?      @unique @map("idempotency_key")
+  payloadJson    Json?        @map("payload_json")
+  attemptCount   Int          @default(0) @map("attempt_count")
+  scheduledAt    DateTime     @default(now()) @map("scheduled_at") @db.Timestamptz(6)
+  startedAt      DateTime?    @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime?    @map("finished_at") @db.Timestamptz(6)
+  lastError      String?      @map("last_error")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("job_runs")
+}
