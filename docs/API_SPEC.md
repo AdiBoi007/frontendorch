@@ -353,6 +353,11 @@ Live Doc Viewer payload.
 - `chunkId`
 - `highlightCitationId`
 
+### Validation rules
+- only one of `anchorId`, `sectionId`, or `chunkId` may be provided at a time
+- if explicit `versionId` is provided for the viewer, it must point to a parsed/viewable version
+- if no explicit `versionId` is provided and the current version is not yet viewable, the backend may fall back to the latest `ready|partial` version for parsed-view routes
+
 ### Response contract
 ```json
 {
@@ -464,6 +469,7 @@ Live Doc Viewer payload.
 - paginated for large docs
 - supports opening exact anchors
 - includes change/decision overlays
+- must not silently fail when the current document version is still parsing if an older parsed version exists
 
 ---
 

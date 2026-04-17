@@ -763,4 +763,112 @@ describe("DocumentService", () => {
       expect.any(String)
     );
   });
+
+  it("falls back to the latest parsed version when the current version is still pending", async () => {
+    const telemetry = { increment: vi.fn(), observeDuration: vi.fn() };
+    const auditRecord = vi.fn().mockResolvedValue(undefined);
+    const documentVersionFindFirstOrThrow = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "ver-pending",
+        status: "processing",
+        parseRevision: 3,
+        parseConfidence: null,
+        sourceLabel: "Fresh upload",
+        createdAt: new Date("2026-01-03T00:00:00.000Z"),
+        processedAt: null
+      })
+      .mockResolvedValueOnce({
+        id: "ver-ready",
+        status: "ready",
+        parseRevision: 2,
+        parseConfidence: "0.900",
+        sourceLabel: "Previous ready version",
+        createdAt: new Date("2026-01-02T00:00:00.000Z"),
+        processedAt: new Date("2026-01-02T01:00:00.000Z")
+      });
+
+    const prisma = {
+      document: {
+        findFirstOrThrow: vi.fn().mockResolvedValue({
+          id: "doc-1",
+          title: "Core PRD",
+          kind: "prd",
+          visibility: "internal",
+          currentVersionId: "ver-pending",
+          projectId: "project-1",
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-01-03T00:00:00.000Z")
+        })
+      },
+      documentVersion: {
+        findFirstOrThrow: documentVersionFindFirstOrThrow,
+        findFirst: vi.fn().mockResolvedValue({
+          id: "ver-ready",
+          status: "ready",
+          parseRevision: 2,
+          parseConfidence: "0.900",
+          sourceLabel: "Previous ready version",
+          createdAt: new Date("2026-01-02T00:00:00.000Z"),
+          processedAt: new Date("2026-01-02T01:00:00.000Z")
+        })
+      },
+      documentSection: {
+        count: vi.fn().mockResolvedValue(1),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "sec-1",
+            anchorId: "overview-1",
+            pageNumber: 1,
+            headingPath: ["Overview"],
+            normalizedText: "Ready section",
+            orderIndex: 0
+          }
+        ])
+      },
+      specChangeLink: {
+        findMany: vi.fn().mockResolvedValue([])
+      },
+      project: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ orgId: "org-1" })
+      },
+      auditEvent: {
+        create: vi.fn().mockResolvedValue(undefined)
+      }
+    } as any;
+
+    const service = new DocumentService(
+      prisma,
+      {} as any,
+      { enqueue: vi.fn() } as any,
+      { embedText: vi.fn() } as any,
+      { transcribeAudio: vi.fn() } as any,
+      { ensureProjectManager: vi.fn(), ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "manager" }) } as any,
+      { record: auditRecord } as any,
+      telemetry as any
+    );
+
+    const payload = await service.getViewerPayload("project-1", "doc-1", "user-1");
+
+    expect(payload.version.id).toBe("ver-ready");
+    expect(payload.sections[0].sectionId).toBe("sec-1");
+    expect(prisma.documentVersion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          documentId: "doc-1",
+          status: { in: ["ready", "partial"] }
+        })
+      })
+    );
+    expect(telemetry.increment).toHaveBeenCalledWith(
+      "orchestra_viewer_requests_total",
+      expect.objectContaining({ action: "open_document", project_role: "manager" })
+    );
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "open_document",
+        projectId: "project-1"
+      })
+    );
+  });
 });

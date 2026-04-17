@@ -288,6 +288,27 @@ describe("route contracts", () => {
     expect(context.services.documentService.getAnchorProvenance).toHaveBeenCalled();
   });
 
+  it("rejects ambiguous viewer target selectors", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/documents/3322717f-2c10-4239-b525-6fbc9158f4fb/view?anchorId=overview-1&sectionId=3322717f-2c10-4239-b525-6fbc9158f4fb",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(response.statusCode).toBeGreaterThanOrEqual(400);
+    expect(context.services.documentService.getViewerPayload).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        anchorId: "overview-1",
+        sectionId: "3322717f-2c10-4239-b525-6fbc9158f4fb"
+      })
+    );
+  });
+
   it("serves message evidence only for internal roles", async () => {
     const managerResponse = await app.inject({
       method: "GET",

@@ -44,6 +44,15 @@ export const viewerQuerySchema = z.object({
   sectionId: z.string().uuid().optional(),
   chunkId: z.string().uuid().optional(),
   highlightCitationId: z.string().uuid().optional()
+}).superRefine((value, context) => {
+  const exactTargets = [value.anchorId, value.sectionId, value.chunkId].filter((candidate) => candidate !== undefined);
+  if (exactTargets.length > 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Only one of anchorId, sectionId, or chunkId may be provided at a time",
+      path: ["anchorId"]
+    });
+  }
 });
 
 export const anchorQuerySchema = z.object({

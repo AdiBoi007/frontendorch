@@ -4,97 +4,103 @@
 
 Feature 3 is **Live Doc Viewer**.
 
-Its job is to make Orchestra's source evidence explorable, navigable, and provable. It is not a raw file endpoint and not a separate truth model. It is the backend read-model that turns Feature 1's parsed documents, accepted change links, decision links, and Feature 2's citations/open-targets into a viewer contract the frontend can open directly.
+Its purpose is to make Orchestra's source evidence explorable and provable. It is the evidence surface on the right side of the product, not a generic file-preview endpoint and not a second truth model. It turns parsed documents, accepted change links, message/thread links, brain links, and Socrates citations into a stable frontend read model.
 
-The viewer is the **evidence surface** for Orchestra.
+The viewer must let a user:
 
----
+- open parsed project documents
+- navigate by section, anchor, page, and chunk-derived evidence
+- inspect accepted overlays without mutating source text
+- jump between source documents and linked communication evidence
+- understand where a statement came from and whether accepted current truth changed it
 
 ## 2. Product role of Feature 3 in Orchestra
 
-Live Doc Viewer sits between Product Brain and Socrates:
+Feature 3 is the **evidence surface** between:
 
-- Feature 1 creates immutable documents, parsed sections, chunks, accepted changes, and brain links.
-- Feature 2 cites those entities and returns open-targets.
-- Feature 3 makes those references actually openable and understandable.
+- Feature 1: Product Brain / parsing / accepted-truth versioning
+- Feature 2: Socrates / citations / open-targets
+
+Feature 1 builds the evidence graph. Feature 2 explains it conversationally. Feature 3 is where the user verifies it.
 
 Without Feature 3:
-- Socrates citations are just IDs.
-- Product Brain provenance is inspectable only through raw tables or generic APIs.
-- Users cannot click a section and see where it came from, what changed there, or which communication thread introduced it.
+
+- Socrates citations are not meaningfully explorable.
+- Accepted changes are visible only as backend records.
+- Product Brain provenance cannot be inspected from the same user surface.
 
 With Feature 3:
-- documents open in parsed form
-- exact anchors/sections/pages are navigable
-- change overlays sit on top of original source text
-- doc -> message and message -> doc navigation works
-- Mannan's click-to-source behavior is implemented through a dedicated provenance read model
 
----
+- original source remains readable
+- accepted overlays remain visible as overlays
+- Socrates citations resolve to real anchors
+- message -> doc and doc -> message navigation works
+- Mannan's click-to-source behavior is implemented
 
 ## 3. Exact scope of Feature 3
 
-Feature 3 implements:
+Feature 3 includes:
 
-- project-scoped document list/read endpoints for the viewer
-- parsed viewer payloads based on `document_sections`
-- exact resolution by `versionId`, `anchorId`, `sectionId`, `chunkId`, and citation id
-- section window paging for large documents
-- accepted change overlays on source sections
-- linked decision/message/thread references on internal views
-- client-safe filtering for shared documents
+- project document listing for viewer use
+- document metadata and version summaries
+- parsed viewer payloads from `document_sections`
+- exact target resolution by `versionId`, `anchorId`, `sectionId`, `chunkId`, `highlightCitationId`
+- section-window paging for large documents
 - section search within a document
-- a provenance inspector endpoint for click-to-source behavior
-- message-side evidence read model with links back into documents
-- compatibility with Socrates citations and `document_section` open-targets
+- accepted change overlays on affected sections
+- internal decision and communication linkage
+- provenance inspector / click-to-source endpoint
+- message-side evidence route for message -> doc navigation
+- server-side client-safe filtering
+- compatibility with Feature 2 citations and `document_section` open-targets
 
-Feature 3 does **not** implement:
+## 4. What Feature 3 is NOT
 
-- raw PDF-first viewing as the primary contract
-- collaborative comments/annotations
-- visual diff rendering
-- OCR pipelines beyond what document ingestion already supports
-- a second accepted-truth model separate from Product Brain
+Feature 3 is not:
 
----
+- a raw file service
+- a PDF-first preview system
+- a collaborative annotation layer
+- a Figma-like commenting UX
+- a separate source of accepted truth
+- a replacement for Product Brain
+- a replacement for Socrates
 
-## 4. User-facing outcomes
+Out of scope:
 
-### Manager / Dev
-- Open a parsed PRD/SRS/call note and navigate by anchor or page.
-- See which accepted changes affect a section.
-- See linked decision IDs and message/thread refs for that section.
-- Click a section and inspect the full provenance bundle.
-- Open a message and see which document sections and change proposals it influenced.
+- pixel-perfect PDF parity
+- broad OCR beyond uploaded-document needs
+- collaborative comments
+- visual diff renderer
+- client-shareable message visibility model
 
-### Client
-- Open only documents with `visibility = shared_with_client`.
-- See original source text and safe overlay summaries.
-- Do **not** see internal message/thread refs, raw change proposal IDs, or internal-only decision identifiers.
+## 5. User-facing outcomes
 
-### Socrates integration
-- A citation returned by Socrates can be opened in the viewer and highlighted at the correct anchor/section.
-- Viewer navigation can feed back into Socrates via the existing `viewerState` model.
+| User | Outcome |
+|---|---|
+| Manager | Opens parsed PRD/SRS/call notes, sees accepted overlays, linked decisions, linked communication evidence |
+| Dev | Opens exact anchor/page, verifies what Socrates cited, inspects linked graph nodes and changes |
+| Client | Opens only shared documents, sees source text plus safe overlay summaries, never sees internal-only refs |
+| Any internal user | Clicks a section and gets a provenance bundle explaining where it came from and what modified it |
 
----
+## 6. Core internal objects
 
-## 5. Core backend contract
+| Object | Role in Feature 3 |
+|---|---|
+| `Document` | Project-scoped immutable source container |
+| `DocumentVersion` | Immutable uploaded version; viewer chooses a viewable version from these |
+| `DocumentSection` | Primary parsed unit rendered by the viewer |
+| `DocumentChunk` | Evidence/retrieval unit that resolves upward to a section |
+| `SpecChangeProposal` | Accepted changes produce viewer overlays |
+| `SpecChangeLink` | Provenance join table connecting sections/messages/threads/brain nodes to changes |
+| `DecisionRecord` | Internal decision object linked to overlays and provenance |
+| `CommunicationMessage` / `CommunicationThread` | Message-side evidence surface and doc linkage |
+| `BrainSectionLink` / `BrainNode` / `BrainEdge` | Structural context for provenance inspector |
+| `SocratesCitation` | Highlight and open-target bridge from Feature 2 into Feature 3 |
 
-The primary frontend contract is **parsed viewer payloads**, not signed file URLs.
+## 7. Data model used by Feature 3
 
-The main navigation unit is:
-
-- section
-- anchor
-- page
-
-Chunks remain evidence-level retrieval units. When a chunk is selected, the viewer resolves it upward to the containing section/page/anchor.
-
----
-
-## 6. Data model used by Feature 3
-
-Feature 3 does not introduce a new truth store. It reuses existing Feature 1 and 2 tables:
+Feature 3 reuses existing tables from Feature 1 and 2:
 
 - `documents`
 - `document_versions`
@@ -110,78 +116,82 @@ Feature 3 does not introduce a new truth store. It reuses existing Feature 1 and
 - `communication_threads`
 - `communication_messages`
 - `socrates_citations`
+- `audit_events`
 
-### New migration in this feature
+### Feature 3 migration
 
 `prisma/migrations/0006_live_doc_viewer_read_model_indexes/migration.sql`
 
-This adds read-side indexes for:
+This adds/supports read-side indexes for:
 
-- document version metadata lookups
+- version metadata lookup
 - exact anchor resolution
-- page/order section windowing
+- section-window paging by `orderIndex`
+- page-based ordering
 - chunk -> section resolution
-- thread/message chronology
-- citation ref lookup
-- trigram-backed section search over `document_sections.normalized_text`
+- message/thread chronology
+- citation lookup by `(project_id, citation_type, ref_id)`
+- section search with trigram index on `document_sections.normalized_text`
 
-No new truth tables were added.
+### Relevant schema-level indexes
 
----
+Feature 3 also relies on indexes declared in `prisma/schema.prisma`, including:
 
-## 7. Server-side role filtering rules
+- `DocumentVersion(documentId, createdAt desc)`
+- `DocumentVersion(projectId, status, processedAt desc)`
+- `DocumentSection(projectId, anchorId)`
+- `DocumentSection(documentVersionId, parseRevision, orderIndex)`
+- `DocumentSection(projectId, pageNumber, orderIndex)`
+- `DocumentChunk(projectId, sectionId)`
+- `DocumentChunk(documentVersionId, parseRevision, sectionId)`
+- `SpecChangeLink(projectId, linkType, linkRefId)`
+- `CommunicationThread(projectId, lastMessageAt desc)`
+- `CommunicationMessage(projectId, sentAt desc)`
+- `CommunicationMessage(threadId, sentAt desc)`
+- `SocratesCitation(projectId, citationType, refId)`
 
-Feature 3 enforces access through `ProjectService.ensureProjectAccess()` plus viewer-specific filtering:
+## 8. API routes used by Feature 3
 
-### Manager / Dev
-- may read internal and shared documents
-- may call message evidence route
-- may inspect linked decisions and raw proposal/message/thread refs
-
-### Client
-- may read only `shared_with_client` documents
-- may **not** call `GET /v1/projects/:projectId/messages/:messageId`
-- receives viewer payloads with:
-  - no raw `changeProposalId`
-  - no `decisionRecordId`
-  - no `linkedDecisionIds`
-  - no `linkedMessageRefs`
-  - no `linkedThreadIds`
-  - no internal-only brain-node references
-
-Clients still receive safe overlay summaries so they can understand that current accepted truth differs from original source in that section.
-
----
-
-## 8. API routes implemented for Feature 3
-
-## 8.1 Existing routes enhanced
+### Existing routes enhanced
 
 - `GET /v1/projects/:projectId/documents`
 - `GET /v1/projects/:projectId/documents/:documentId`
 - `GET /v1/projects/:projectId/documents/:documentId/view`
 - `GET /v1/projects/:projectId/documents/:documentId/anchors/:anchorId`
 
-## 8.2 New routes added
+### New routes added
 
-- `GET /v1/projects/:projectId/documents/:documentId/search?q=...`
+- `GET /v1/projects/:projectId/documents/:documentId/search`
 - `GET /v1/projects/:projectId/documents/:documentId/anchors/:anchorId/provenance`
 - `GET /v1/projects/:projectId/messages/:messageId`
 
-## 8.3 Related internal-only route behavior tightened
+### Related route hardening
 
 - `GET /v1/projects/:projectId/change-proposals`
 - `GET /v1/projects/:projectId/change-proposals/:proposalId`
 
-These raw proposal detail/list routes are now manager/dev only. Clients get safe overlay summaries from viewer payloads instead of internal proposal records.
+These remain part of Feature 1 but were hardened for Feature 3 compatibility: manager/dev only. Clients receive only safe change overlay summaries from viewer payloads.
 
----
+## 9. Full document list/read-model flow
 
-## 9. `GET /documents` read model
+### Route
 
-`DocumentService.listDocuments(projectId, actorUserId, { page, pageSize })`
+`GET /v1/projects/:projectId/documents?page=<n>&pageSize=<n>`
 
-Returns:
+### Implementation
+
+`DocumentService.listDocuments(projectId, actorUserId, opts)`
+
+### Flow
+
+1. Enforce project access with `ProjectService.ensureProjectAccess`.
+2. If actor is a client, add `visibility = shared_with_client`.
+3. Count matching docs.
+4. Page docs ordered by `createdAt DESC`.
+5. Load their current versions in bulk.
+6. Return viewer-oriented metadata.
+
+### Response fields
 
 - `id`
 - `projectId`
@@ -194,7 +204,7 @@ Returns:
 - `lastProcessedAt`
 - `currentVersion`
 
-Plus pagination meta:
+### Pagination meta
 
 - `page`
 - `pageSize`
@@ -202,32 +212,13 @@ Plus pagination meta:
 - `totalPages`
 - `hasMore`
 
-Ordering is `createdAt DESC`.
+## 10. Full parsed viewer payload model
 
-Client members only see shared documents.
-
----
-
-## 10. `GET /documents/:documentId` read model
-
-`DocumentService.getDocument(projectId, documentId, actorUserId)`
-
-Returns:
-
-- base document identity
-- `parseStatus`
-- `currentVersion`
-- `versions[]`
-
-This is metadata + version summary, not the parsed document body.
-
----
-
-## 11. Parsed viewer payload
+### Route
 
 `GET /v1/projects/:projectId/documents/:documentId/view`
 
-Query parameters supported:
+### Query params
 
 - `versionId`
 - `page`
@@ -237,21 +228,13 @@ Query parameters supported:
 - `chunkId`
 - `highlightCitationId`
 
-### Resolution rules
+### Validation rules
 
-1. Resolve the accessible document.
-2. Resolve the requested/current document version.
-3. If `highlightCitationId` is present, validate that the Socrates citation:
-   - belongs to the same project
-   - is of type `document_section` or `document_chunk`
-   - belongs to the requested document
-   - is client-safe if the actor is a client
-4. Resolve explicit target priority:
-   - `chunkId`
-   - `sectionId`
-   - `anchorId`
-5. If a target exists, compute the page window from `section.orderIndex`.
-6. Load only that section window.
+- `pageSize <= 200`
+- `sectionId` must be UUID
+- `chunkId` must be UUID
+- `highlightCitationId` must be UUID
+- only **one** of `anchorId`, `sectionId`, or `chunkId` may be present at once
 
 ### Response shape
 
@@ -263,7 +246,7 @@ Query parameters supported:
 - `sections[]`
 - `meta`
 
-### Section payload shape
+### `sections[]` payload
 
 Each section contains:
 
@@ -280,76 +263,190 @@ Each section contains:
 - `hasCurrentTruthOverlay`
 - `currentTruthSummary[] | null`
 
-`citationLabel` format is:
+### Paging/window behavior
 
-`<document title> · p.<page>|section · <heading path or anchor>`
+The viewer never loads the whole document by default.
 
----
+If no explicit target exists:
 
-## 12. Exact target resolution
+- use requested `page`
+- clamp to valid total pages
 
-Exact resolution is implemented in `DocumentService.resolveExplicitTarget()`.
+If an explicit target exists:
 
-### Supported selectors
+- compute the containing window page from `section.orderIndex / pageSize`
 
-- `versionId`
-- `sectionId`
+## 11. Exact target-resolution model
+
+Implemented by:
+
+- `resolveDocumentVersion()`
+- `resolveExplicitTarget()`
+- `resolveHighlightCandidate()`
+- `resolveHighlightForVersion()`
+- `loadSectionByAnchor()`
+- `loadSectionById()`
+
+### Resolution inputs
+
+- document id
+- version id
+- anchor id
+- section id
+- chunk id
+- Socrates citation id
+
+### Visible navigation unit
+
+- section
+- anchor
+- page
+
+Chunks are not rendered directly. `chunkId` resolves upward to the parent section.
+
+### Version resolution rules
+
+For parsed-view routes (`view`, `anchor`, `search`, `provenance`):
+
+1. If explicit `versionId` is provided:
+   - version must belong to the project/document
+   - version must be `ready` or `partial`
+   - otherwise return `409 document_version_not_viewable`
+2. If no explicit version is provided:
+   - try `document.currentVersionId`
+   - if current version is not parsed/viewable, fall back to latest `ready|partial` version by `processedAt DESC, createdAt DESC`
+   - if none exists, return `409 document_not_viewable`
+
+This prevents the viewer from breaking when a new upload becomes current before parsing completes.
+
+### Exact anchor rules
+
+`GET /anchors/:anchorId` uses a direct lookup scoped to:
+
+- `projectId`
+- `documentVersionId`
+- `parseRevision`
 - `anchorId`
-- `chunkId`
-- `highlightCitationId`
 
-### Important behavior
+It does not depend on the current page window already being loaded.
 
-- `chunkId` resolves to its parent section. Chunks are never rendered as standalone rows.
-- `GET /anchors/:anchorId` does a direct indexed lookup by `(project_id, document_version_id, parse_revision, anchor_id)`.
-- anchor reads do **not** depend on the first page window already being loaded.
+### Invalid target behavior
 
-This is what fixes the old weak viewer behavior where anchors could only be found if they happened to be in the currently loaded window.
+- invalid project/document/version relationships -> `404`/`403` via scoped queries
+- invalid unparsed explicit version -> `409`
+- invalid chunk without section -> `409 chunk_missing_section`
+- invalid highlight citation type -> `422 invalid_viewer_highlight`
+- citation from another document/version -> `409`
 
----
+## 12. Full citation/open-target rendering flow
 
-## 13. Change overlays
+Feature 2 returns citations/open-targets. Feature 3 consumes them.
 
-Change overlays are assembled from `spec_change_links` where:
+### Supported highlight source types
 
-- `link_type = document_section`
-- linked proposal `status = accepted`
+- `document_section`
+- `document_chunk`
 
-Per section, the service collects:
+### Highlight flow
 
-- accepted proposal summary
-- proposal type/status
-- accepted metadata
-- linked brain node IDs
-- linked thread IDs
-- linked message refs
-- linked decision IDs
-- `currentTruthSummary[]`
+1. `highlightCitationId` arrives on `/view`.
+2. `resolveHighlightCandidate()` loads the Socrates citation.
+3. Validate:
+   - citation belongs to project
+   - citation type is viewable
+   - citation belongs to requested document
+   - citation is client-safe if actor is a client
+4. If citation is `document_chunk`, resolve upward to parent section.
+5. Ensure citation version matches the chosen viewer version.
+6. Return `highlight` block:
+   - `citationId`
+   - `citationType`
+   - `refId`
+   - `sectionId`
+   - `anchorId`
+   - `pageNumber`
+   - `chunkId`
+   - `citationLabel`
+   - `openTarget`
 
-Original section text is never rewritten.
+### Socrates compatibility guarantee
 
-The overlay model is:
+Feature 3 is in sync with Feature 2 because `document_section` open-targets use:
 
-- original source stays in `text`
-- accepted current-truth effect appears in `changeMarkers` and `currentTruthSummary`
+```json
+{
+  "targetType": "document_section",
+  "targetRef": {
+    "documentId": "uuid",
+    "documentVersionId": "uuid",
+    "anchorId": "string",
+    "pageNumber": 12
+  }
+}
+```
 
----
+The viewer consumes this contract directly.
 
-## 14. Provenance inspector (Mannan feature)
+## 13. Full change-overlay model
 
-Route:
+Overlays are assembled from accepted `spec_change_links` on `document_section`.
+
+### Query basis
+
+`SpecChangeLink where linkType = document_section and proposal.status = accepted`
+
+### Enriched overlay joins
+
+For each accepted proposal linked to the section, Feature 3 also loads related links of type:
+
+- `message`
+- `thread`
+- `brain_node`
+
+### Marker fields
+
+- `changeProposalId` or `null` for clients
+- `proposalType`
+- `status`
+- `acceptedAt`
+- `acceptedBy` or `null` for clients
+- `title`
+- `summary`
+- `decisionRecordId` or `null` for clients
+- `linkedBrainNodeIds[]` or empty for clients
+- `linkedThreadIds[]` or empty for clients
+- `linkedMessageRefs[]` or empty for clients
+
+### Overlay rules
+
+- source section `text` is never mutated
+- `hasCurrentTruthOverlay` means accepted current truth differs in that area
+- `currentTruthSummary[]` communicates the accepted effect
+- markers are sorted newest-first by `acceptedAt`
+- message refs are de-duplicated per section
+
+## 14. Full click-to-source / provenance-inspector flow
+
+### Route
 
 `GET /v1/projects/:projectId/documents/:documentId/anchors/:anchorId/provenance`
 
-This is the backend contract for “where did this come from?”
+### Purpose
 
-It returns:
+This is the mandatory Mannan feature. It answers:
+
+- where did this statement come from?
+- what source evidence supports it?
+- what brain nodes does it influence?
+- what accepted communications modified it?
+
+### Response
 
 - `document`
 - `version`
 - `selectedSection`
 - `supportingSections`
-- `supportingEvidence` from `document_chunks`
+- `supportingEvidence`
 - `linkedBrainNodes`
 - `linkedChanges`
 - `linkedDecisions`
@@ -357,232 +454,346 @@ It returns:
 - `currentTruth`
 - `openTargets`
 
+### Supporting evidence behavior
+
+- `supportingSections` = adjacent parsed sections by `orderIndex`
+- `supportingEvidence` = `document_chunks` for the selected section
+- `linkedBrainNodes` = current accepted `brain_graph` links for this section
+- `linkedChanges` = accepted change proposals affecting this section
+- `linkedDecisions` = linked decision records for those accepted proposals
+- `linkedMessageRefs` = resolved related messages/threads where allowed
+
 ### `currentTruth`
 
 ```json
 {
   "differsFromSource": true,
-  "summaries": ["Accepted client feedback changed this requirement"]
+  "summaries": ["Client requested weekly reporting"]
 }
 ```
 
-### `openTargets`
+### Client-safe behavior
 
-Includes validated viewer/openable targets for:
+Clients still receive provenance, but:
 
-- selected section
-- nearby supporting sections
-- linked brain nodes
-- linked decisions
-- linked change proposals (internal only)
-- linked threads/messages (internal only)
+- no raw proposal IDs
+- no decision IDs
+- no raw message/thread refs
+- no internal-only brain-node references
 
----
+## 15. Search-within-document model
 
-## 15. Message-side evidence read model
-
-Route:
-
-`GET /v1/projects/:projectId/messages/:messageId`
-
-Internal only.
-
-Returns:
-
-- message identity/body
-- thread metadata
-- linked document sections
-- linked change proposals
-- linked decision records
-- open-targets back into thread/doc viewer
-
-This uses:
-
-- `spec_change_links` of type `message` / `thread`
-- then joins back to `document_section` links for those proposals
-
-The route de-duplicates:
-
-- linked proposals
-- linked sections
-
-so the frontend receives a stable evidence bundle instead of repeated join rows.
-
----
-
-## 16. Section search
-
-Route:
+### Route
 
 `GET /v1/projects/:projectId/documents/:documentId/search?q=...&versionId=...&limit=...`
 
-Search is section-first and role-safe.
+### Search model
 
-Implementation:
+Search is section-first, lexical, deterministic, and scoped to one parsed document version.
 
-- scope to the selected/current document version
-- query `document_sections.normalized_text` with case-insensitive lexical matching
-- rank results with a simple deterministic score:
-  - heading-path boost
-  - earlier match position boost
-- return:
-  - `sectionId`
-  - `anchorId`
-  - `citationLabel`
-  - `pageNumber`
-  - `headingPath`
-  - `orderIndex`
-  - `snippet`
-  - `score`
-  - `openTarget`
+### Flow
 
-Read-side support index:
+1. Resolve accessible document.
+2. Resolve viewable version with parsed-version fallback rules.
+3. Query `document_sections.normalized_text contains q`.
+4. Score each hit:
+   - heading-path boost
+   - earlier match position boost
+5. Sort by `score DESC`, then `orderIndex ASC`.
+6. Return up to `limit` results.
 
-- `document_sections_normalized_text_trgm_idx`
+### Search result payload
 
----
-
-## 17. Feature 2 integration
-
-Feature 3 is wired specifically to Socrates output.
-
-### Highlight compatibility
-
-`highlightCitationId` lets the viewer open a Socrates citation and return:
-
-- the correct window page
-- the selected anchor/section
-- a `highlight` block with `openTarget`
-
-### Open-target compatibility
-
-Socrates `document_section` targets already use:
-
-```json
-{
-  "targetType": "document_section",
-  "targetRef": {
-    "documentId": "...",
-    "documentVersionId": "...",
-    "anchorId": "...",
-    "pageNumber": 12
-  }
-}
-```
-
-Feature 3 consumes that contract directly.
-
-### Viewer -> Socrates loop
-
-Feature 3 returns `viewerState` in the same shape Socrates stores in session context:
-
-- `documentId`
-- `documentVersionId`
-- `pageNumber`
+- `sectionId`
 - `anchorId`
+- `citationLabel`
+- `pageNumber`
+- `headingPath`
+- `orderIndex`
+- `snippet`
+- `score`
+- `openTarget`
 
-This lets the frontend push viewer navigation back to:
+### Performance note
 
-`PATCH /v1/projects/:projectId/socrates/sessions/:sessionId/context`
+The query is backed by the trigram index on `document_sections.normalized_text`, but the implementation still uses deterministic lexical matching, not vector search.
 
-without translation glue.
+## 16. Role filtering / client-safe rules
 
----
+### Manager / Dev
 
-## 18. Files and modules used
+- full internal document access within the project
+- full message evidence route access
+- linked decisions shown
+- linked message refs shown
+- linked thread ids shown
+- raw proposal ids shown
+- internal graph nodes shown
 
-Feature 3 is intentionally implemented by extending the existing `documents` module instead of creating a separate viewer micro-module.
+### Client
 
-### Primary implementation files
+- only documents with `visibility = shared_with_client`
+- no message evidence route
+- no raw change proposal ids in overlays
+- no raw decision ids
+- no linked message refs
+- no linked thread ids
+- no internal-only graph nodes in provenance
+
+### Enforcement location
+
+All filtering happens server-side in `DocumentService` and route guards. The frontend is never trusted for hiding unsafe refs.
+
+## 17. Interaction with Feature 1
+
+Feature 3 depends on Feature 1 for:
+
+- immutable `documents` and `document_versions`
+- parsed `document_sections`
+- evidence `document_chunks`
+- accepted `spec_change_proposals`
+- `spec_change_links`
+- `decision_records`
+- `brain_graph` / `brain_section_links`
+
+Feature 3 reuses Feature 1's versioning model exactly:
+
+- original documents remain immutable
+- accepted changes appear as overlays and linked records
+- no source bytes are rewritten
+- accepted current truth is presented as overlay summaries, not silent source mutation
+
+## 18. Interaction with Feature 2
+
+Feature 3 depends on Feature 2 for:
+
+- `socrates_citations`
+- `document_section` open-target contract
+- session `viewerState` shape
+
+Feature 3 keeps Feature 2 in sync by:
+
+- validating highlight citations against real project/doc/version entities
+- resolving chunk citations up to sections
+- returning `viewerState` in the same shape Socrates persists
+- making viewer selections usable for `PATCH /socrates/sessions/:sessionId/context`
+
+If Feature 2 cites something Feature 3 cannot open, the system is broken. The current implementation explicitly rejects invalid/stale citation targets.
+
+## 19. Tech stack used
+
+- Node.js
+- TypeScript
+- Fastify
+- Prisma
+- PostgreSQL
+- pgvector
+- Redis / BullMQ available in the broader system
+- existing Product Brain + Socrates stack
+
+Feature 3 itself is a read-model layer in the modular monolith, not a separate service.
+
+## 20. Libraries/packages/services used
+
+### Runtime
+
+- `fastify`
+- `zod`
+- Prisma Client
+
+### Internal services
+
+- `ProjectService`
+- `AuditService`
+- `TelemetryService`
+- `DocumentService`
+
+### Existing Feature 1/2 artifacts reused
+
+- Product Brain graph artifacts
+- accepted change links
+- Socrates citations
+
+## 21. Validation and security rules
+
+### Request validation
+
+- route params validated in Zod
+- viewer query validated in Zod
+- only one exact selector among `anchorId`, `sectionId`, `chunkId`
+- explicit `versionId` must be UUID
+- `highlightCitationId` must be UUID
+
+### Security rules
+
+- every route requires auth except health/metrics
+- project access enforced by membership
+- manager/dev/client filtering enforced server-side
+- client cannot access internal message route
+- client cannot access raw change proposal detail/list routes
+- client cannot highlight internal citations
+- client cannot point viewer state at internal documents through Socrates session context
+
+## 22. Error handling and edge cases
+
+### Main handled edge cases
+
+- current version exists but is still `pending|processing|failed`
+  - fallback to latest parsed version for parsed-view routes
+- explicit `versionId` is unparsed
+  - `409 document_version_not_viewable`
+- document has no parsed version at all
+  - `409 document_not_viewable`
+- chunk citation missing parent section
+  - `409 chunk_missing_section`
+- citation belongs to another document
+  - `409 citation_document_mismatch`
+- citation belongs to another version than the selected explicit version
+  - `409 citation_version_mismatch`
+- unsupported citation type for highlighting
+  - `422 invalid_viewer_highlight`
+- ambiguous exact targets
+  - request validation failure
+- page query outside valid range
+  - clamp to valid total pages
+
+### Failure behavior
+
+Viewer routes return explicit API errors through the shared Fastify error handler. They do not silently fall back to raw file downloads.
+
+## 23. Testing strategy
+
+Feature 3 is covered by:
+
+- unit/service tests in `tests/document-service.test.ts`
+- route contract tests in `tests/routes.test.ts`
+- Feature 2 compatibility tests in existing Socrates tests
+
+### Verified scenarios
+
+- document list pagination
+- client document filtering
+- parsed viewer payload shape
+- exact anchor lookup outside current page window
+- client-safe overlay stripping
+- section search snippets and open-targets
+- provenance bundles
+- message evidence route
+- client blocking on raw change proposal detail route
+- fallback to latest parsed version when current version is unparsed
+- invalid ambiguous target selector rejection
+- viewer telemetry/audit emission on read paths
+
+## 24. Performance/read-model strategy
+
+Feature 3 is optimized as an explicit read model, not a denormalized materialized view.
+
+### Strategy
+
+- page/window load by `orderIndex`
+- no full-document load requirement
+- exact anchor lookups use scoped indexes
+- chunk ids resolve upward, avoiding chunk-level render lists
+- message route de-duplicates proposal/document joins
+- section search stays inside a single document version
+
+### Common request-time joins
+
+- section overlay expansion
+- accepted proposal -> message/thread/brain-node links
+- current graph links for provenance
+- message -> proposal -> section joins
+
+These joins are acceptable because they are scoped to one project/document/anchor/message and backed by indexes.
+
+## 25. Production-readiness notes
+
+Feature 3 is production-ready at the application layer after audit hardening.
+
+### Hardened points
+
+- current-version fallback for parsed-view routes
+- server-side client-safe filtering
+- exact anchor resolution independent of page window
+- validation against ambiguous selectors
+- viewer telemetry counters/histograms
+- audit events for viewer opens, searches, provenance, and message evidence reads
+- stable overlay sorting and de-duplication
+
+Remaining caveat:
+
+- no live infra-backed staging validation against real Postgres/Redis/S3 in this repo pass
+
+## 26. How the feature was actually implemented in this repo
+
+Feature 3 was implemented by extending the existing `documents` module instead of creating a new module tree.
+
+### Main service methods
+
+- `listDocuments()`
+- `getDocument()`
+- `getViewerPayload()`
+- `getAnchor()`
+- `searchDocument()`
+- `getAnchorProvenance()`
+- `getMessageEvidence()`
+
+### Main private helpers
+
+- `resolveDocumentVersion()`
+- `resolveExplicitTarget()`
+- `resolveHighlightCandidate()`
+- `resolveHighlightForVersion()`
+- `buildSectionPayloads()`
+- `loadSectionOverlays()`
+- `loadRelatedMessageRefs()`
+- `filterClientSafeBrainLinks()`
+- `recordViewerAction()`
+- `observeViewerActionDuration()`
+
+## 27. File/module map of the implementation
+
+### Core implementation
 
 - `src/modules/documents/service.ts`
 - `src/modules/documents/routes.ts`
 - `src/modules/documents/schemas.ts`
 
-### Related supporting files
+### Integration / guards
 
 - `src/modules/changes/routes.ts`
-- `src/modules/socrates/schemas.ts`
-- `src/modules/socrates/service.ts`
 - `src/app/auth.ts`
+- `src/modules/socrates/service.ts`
+- `src/modules/socrates/schemas.ts`
+
+### Schema / migrations
+
 - `prisma/schema.prisma`
 - `prisma/migrations/0006_live_doc_viewer_read_model_indexes/migration.sql`
 
----
-
-## 19. Notable implementation details
-
-### No new module for viewer truth
-
-The viewer does not persist its own projection. It assembles read models on demand from Feature 1 and 2 data.
-
-### Exact lookups are indexed
-
-The main critical paths are:
-
-- anchor lookup
-- section window loading by `orderIndex`
-- chunk -> section resolution
-- message/thread chronology
-- citation id -> referenced entity
-
-### Client-safe filtering is explicit
-
-The service strips internal-only refs at assembly time. The frontend is not trusted to hide them.
-
----
-
-## 20. Tests added/updated
-
-Feature 3 added/updated tests in:
+### Tests
 
 - `tests/document-service.test.ts`
 - `tests/routes.test.ts`
-
-Verified scenarios:
-
-- document listing pagination
-- client document filtering
-- parsed viewer payload contract
-- exact anchor lookup outside the first page window
-- manager-only message evidence route
-- client blocking on raw change proposal routes
-- section search route
-- provenance route
-- client-safe stripping of message refs and decision ids
-
-Feature 2 integration remains covered by:
-
-- `tests/socrates-routes.test.ts`
-- `tests/socrates-service.test.ts`
 - `tests/socrates-hybrid.test.ts`
 
----
+## 28. How Feature 4 (Dashboard) or later features consume Feature 3 outputs
 
-## 21. Production-readiness notes
+Feature 4 does not directly depend on Feature 3 for truth creation. But later surfaces can consume Feature 3 outputs as evidence-navigation contracts:
 
-Feature 3 is production-ready at the application layer:
+- Dashboard can deep-link unresolved/freshness/change cards into the viewer using document-section open-targets.
+- Future client-review surfaces can reuse the client-safe viewer payload as the canonical evidence contract.
+- Future diff/review tooling can build on the provenance endpoint instead of inventing a new provenance graph.
+- Feature 2 already consumes the same viewer target contract indirectly via citations/open-targets.
 
-- deterministic read-model assembly
-- explicit role filtering
-- no hidden rewrites of source text
-- real exact-resolution behavior
-- viewer/search/provenance routes under test
-- migration-backed indexes for the new read patterns
+## 29. Known limitations / intentionally deferred items
 
-Remaining infra caveat is the same as earlier features:
-
-- no live staging validation against a real Postgres/Redis/S3 deployment in this repo pass
-
----
-
-## 22. Intentionally deferred items
-
-- raw file download as a first-class viewer contract
-- PDF visual parity
-- inline annotations/comments
-- document diff renderer
-- client-shareable message visibility model
-- communication thread list/detail routes beyond the single-message evidence read model
-
-These belong to later product work, not Feature 3.
+| Item | Status | Notes |
+|---|---|---|
+| Raw file preview parity | Deferred | Parsed viewer payload is the primary contract. |
+| PDF-native rendering parity | Deferred | Not required for the current product. |
+| Visual diff renderer | Deferred | Current truth shows as overlays and summaries, not visual diffs. |
+| Client-shareable message content | Deferred | Clients cannot open message evidence directly yet. |
+| Thread list/detail viewer | Deferred | Only single-message evidence route exists for now. |
+| Vector-based document search in viewer | Deferred | Viewer search remains lexical and deterministic. |
+| Full infra-backed staging validation | Deferred | Application-level build/test/Prisma validation are complete. |

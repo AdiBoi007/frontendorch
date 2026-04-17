@@ -38,6 +38,8 @@ type PaginationInput = {
   pageSize?: number;
 };
 
+type ViewerAction = "open_document" | "open_anchor" | "search_document" | "open_provenance" | "open_message_evidence";
+
 type ViewerPayloadOptions = PaginationInput & {
   versionId?: string;
   anchorId?: string;
@@ -422,6 +424,7 @@ export class DocumentService {
     actorUserId: string,
     opts: ViewerPayloadOptions = {}
   ) {
+    const startedAt = process.hrtime.bigint();
     const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
 
@@ -431,7 +434,8 @@ export class DocumentService {
     const resolvedVersion = await this.resolveDocumentVersion(
       projectId,
       document,
-      opts.versionId ?? preResolvedHighlight?.versionId ?? undefined
+      opts.versionId ?? preResolvedHighlight?.versionId ?? undefined,
+      true
     );
 
     const explicitTarget = await this.resolveExplicitTarget(projectId, document.id, resolvedVersion.id, opts);
@@ -446,29 +450,29 @@ export class DocumentService {
     const effectiveTarget = explicitTarget ?? highlight;
 
     const pageSize = Math.min(opts.pageSize ?? 200, 200);
-    const selectedPage =
-      effectiveTarget != null ? Math.floor(effectiveTarget.section.orderIndex / pageSize) + 1 : Math.max(opts.page ?? 1, 1);
+    const totalCount = await this.prisma.documentSection.count({
+      where: {
+        documentVersionId: resolvedVersion.id,
+        parseRevision: resolvedVersion.parseRevision
+      }
+    });
+    const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
+    const selectedPage = effectiveTarget != null
+      ? Math.floor(effectiveTarget.section.orderIndex / pageSize) + 1
+      : Math.min(Math.max(opts.page ?? 1, 1), totalPages);
     const skip = (selectedPage - 1) * pageSize;
 
-    const [totalCount, sections] = await Promise.all([
-      this.prisma.documentSection.count({
-        where: {
-          documentVersionId: resolvedVersion.id,
-          parseRevision: resolvedVersion.parseRevision
-        }
-      }),
-      this.prisma.documentSection.findMany({
-        where: {
-          documentVersionId: resolvedVersion.id,
-          parseRevision: resolvedVersion.parseRevision
-        },
-        orderBy: {
-          orderIndex: "asc"
-        },
-        skip,
-        take: pageSize
-      })
-    ]);
+    const sections = await this.prisma.documentSection.findMany({
+      where: {
+        documentVersionId: resolvedVersion.id,
+        parseRevision: resolvedVersion.parseRevision
+      },
+      orderBy: {
+        orderIndex: "asc"
+      },
+      skip,
+      take: pageSize
+    });
 
     const sectionPayloads = await this.buildSectionPayloads(
       projectId,
@@ -478,7 +482,7 @@ export class DocumentService {
       member.projectRole
     );
 
-    return {
+    const payload = {
       document: this.toDocumentIdentity(document),
       version: this.toVersionSummary(resolvedVersion, resolvedVersion.id === document.currentVersionId),
       viewerState: effectiveTarget
@@ -517,10 +521,24 @@ export class DocumentService {
         page: selectedPage,
         pageSize,
         totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
+        totalPages,
         hasMore: skip + sections.length < totalCount
       }
     };
+
+    await this.recordViewerAction(projectId, actorUserId, "open_document", {
+      documentId: document.id,
+      versionId: resolvedVersion.id,
+      projectRole: member.projectRole,
+      page: payload.meta.page,
+      pageSize,
+      targetSource: effectiveTarget?.source ?? null,
+      selectedAnchorId: payload.selected?.anchorId ?? null,
+      highlightedCitationId: payload.highlight?.citationId ?? null
+    });
+    this.observeViewerActionDuration(startedAt, "open_document", member.projectRole);
+
+    return payload;
   }
 
   async getAnchor(
@@ -530,9 +548,10 @@ export class DocumentService {
     actorUserId: string,
     opts: AnchorOptions = {}
   ) {
+    const startedAt = process.hrtime.bigint();
     const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
-    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId);
+    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId, true);
     const section = await this.loadSectionByAnchor(projectId, version.id, version.parseRevision, anchorId);
     const [sectionPayload] = await this.buildSectionPayloads(projectId, document, version, [section], member.projectRole);
     const highlight = await this.resolveHighlightForVersion(
@@ -543,7 +562,7 @@ export class DocumentService {
       member.projectRole
     );
 
-    return {
+    const payload = {
       document: this.toDocumentIdentity(document),
       version: this.toVersionSummary(version, version.id === document.currentVersionId),
       viewerState: {
@@ -575,6 +594,17 @@ export class DocumentService {
           : null,
       section: sectionPayload
     };
+
+    await this.recordViewerAction(projectId, actorUserId, "open_anchor", {
+      documentId: document.id,
+      versionId: version.id,
+      projectRole: member.projectRole,
+      anchorId: section.anchorId,
+      highlightedCitationId: payload.highlight?.citationId ?? null
+    });
+    this.observeViewerActionDuration(startedAt, "open_anchor", member.projectRole);
+
+    return payload;
   }
 
   async searchDocument(
@@ -583,9 +613,10 @@ export class DocumentService {
     actorUserId: string,
     opts: DocumentSearchOptions
   ) {
+    const startedAt = process.hrtime.bigint();
     const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
-    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId);
+    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId, true);
     const limit = Math.min(opts.limit ?? 20, 50);
 
     const sections = await this.prisma.documentSection.findMany({
@@ -618,7 +649,7 @@ export class DocumentService {
       .sort((left, right) => right.score - left.score || left.orderIndex - right.orderIndex)
       .slice(0, limit);
 
-    return {
+    const payload = {
       items,
       meta: {
         query: opts.q,
@@ -627,6 +658,18 @@ export class DocumentService {
         limited: sections.length > limit
       }
     };
+
+    await this.recordViewerAction(projectId, actorUserId, "search_document", {
+      documentId: document.id,
+      versionId: version.id,
+      projectRole: member.projectRole,
+      query: opts.q,
+      limit,
+      resultCount: items.length
+    });
+    this.observeViewerActionDuration(startedAt, "search_document", member.projectRole);
+
+    return payload;
   }
 
   async getAnchorProvenance(
@@ -636,9 +679,10 @@ export class DocumentService {
     actorUserId: string,
     opts: AnchorOptions = {}
   ) {
+    const startedAt = process.hrtime.bigint();
     const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     const document = await this.ensureAccessibleDocument(projectId, documentId, member.projectRole);
-    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId);
+    const version = await this.resolveDocumentVersion(projectId, document, opts.versionId, true);
     const section = await this.loadSectionByAnchor(projectId, version.id, version.parseRevision, anchorId);
     const [selectedSection] = await this.buildSectionPayloads(projectId, document, version, [section], member.projectRole);
     const supportingSectionsRaw = await this.prisma.documentSection.findMany({
@@ -676,7 +720,7 @@ export class DocumentService {
     });
 
     const currentGraph = await this.prisma.artifactVersion.findFirst({
-      where: {
+        where: {
         projectId,
         artifactType: "brain_graph",
         status: "accepted"
@@ -808,7 +852,7 @@ export class DocumentService {
         }))
     }));
 
-    return {
+    const payload = {
       document: this.toDocumentIdentity(document),
       version: this.toVersionSummary(version, version.id === document.currentVersionId),
       selectedSection,
@@ -835,9 +879,23 @@ export class DocumentService {
         )
       }
     };
+
+    await this.recordViewerAction(projectId, actorUserId, "open_provenance", {
+      documentId: document.id,
+      versionId: version.id,
+      projectRole: member.projectRole,
+      anchorId: section.anchorId,
+      supportingSectionCount: supportingSections.length,
+      linkedChangeCount: linkedChanges.length,
+      linkedMessageCount: payload.linkedMessageRefs.length
+    });
+    this.observeViewerActionDuration(startedAt, "open_provenance", member.projectRole);
+
+    return payload;
   }
 
   async getMessageEvidence(projectId: string, messageId: string, actorUserId: string) {
+    const startedAt = process.hrtime.bigint();
     const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
     if (member.projectRole === "client") {
       throw new AppError(403, "Client access is not allowed for message evidence", "client_message_access_forbidden");
@@ -952,7 +1010,7 @@ export class DocumentService {
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
 
-    return {
+    const payload = {
       message: {
         id: message.id,
         threadId: message.threadId,
@@ -984,6 +1042,17 @@ export class DocumentService {
         documents: linkedDocuments.map((documentLink) => documentLink.openTarget)
       }
     };
+
+    await this.recordViewerAction(projectId, actorUserId, "open_message_evidence", {
+      messageId: message.id,
+      threadId: message.threadId,
+      projectRole: member.projectRole,
+      linkedDocumentCount: linkedDocuments.length,
+      linkedChangeCount: uniqueProposalLinks.length
+    });
+    this.observeViewerActionDuration(startedAt, "open_message_evidence", member.projectRole);
+
+    return payload;
   }
 
   async reprocess(projectId: string, documentId: string, actorUserId: string) {
@@ -1448,19 +1517,102 @@ export class DocumentService {
   private async resolveDocumentVersion(
     projectId: string,
     document: { id: string; currentVersionId: string | null },
-    versionId?: string
+    versionId?: string,
+    requireParsed = false
   ) {
     const resolvedVersionId = versionId ?? document.currentVersionId;
     if (!resolvedVersionId) {
       throw new AppError(400, "Document has no current version", "missing_current_version");
     }
 
-    return this.prisma.documentVersion.findFirstOrThrow({
+    const version = await this.prisma.documentVersion.findFirstOrThrow({
       where: {
         id: resolvedVersionId,
         documentId: document.id,
         projectId
       }
+    });
+
+    if (!requireParsed) {
+      return version;
+    }
+
+    if (version.status === "ready" || version.status === "partial") {
+      return version;
+    }
+
+    if (versionId) {
+      throw new AppError(
+        409,
+        "Requested document version is not ready for parsed viewing yet",
+        "document_version_not_viewable"
+      );
+    }
+
+    const fallbackVersion = await this.prisma.documentVersion.findFirst({
+      where: {
+        documentId: document.id,
+        projectId,
+        status: {
+          in: ["ready", "partial"]
+        }
+      },
+      orderBy: [{ processedAt: "desc" }, { createdAt: "desc" }]
+    });
+
+    if (!fallbackVersion) {
+      throw new AppError(
+        409,
+        "Document does not have a parsed version available for viewing yet",
+        "document_not_viewable"
+      );
+    }
+
+    return fallbackVersion;
+  }
+
+  private async lookupProjectOrgId(projectId: string) {
+    const project = await this.prisma.project.findUniqueOrThrow({
+      where: { id: projectId },
+      select: { orgId: true }
+    });
+
+    return project.orgId;
+  }
+
+  private async recordViewerAction(
+    projectId: string,
+    actorUserId: string,
+    action: ViewerAction,
+    payload: Record<string, unknown>
+  ) {
+    try {
+      const orgId = await this.lookupProjectOrgId(projectId);
+      await this.auditService.record({
+        orgId,
+        projectId,
+        actorUserId,
+        eventType: action,
+        entityType: "viewer",
+        entityId: null,
+        payload
+      });
+    } catch {
+      this.telemetry.increment("orchestra_viewer_audit_failures_total", {
+        action
+      });
+    }
+  }
+
+  private observeViewerActionDuration(startedAt: bigint, action: ViewerAction, projectRole: string) {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    this.telemetry.increment("orchestra_viewer_requests_total", {
+      action,
+      project_role: projectRole
+    });
+    this.telemetry.observeDuration("orchestra_viewer_request_duration_ms", durationMs, {
+      action,
+      project_role: projectRole
     });
   }
 
@@ -1829,7 +1981,16 @@ export class DocumentService {
     }, {});
 
     return {
-      markersBySection,
+      markersBySection: Object.fromEntries(
+        Object.entries(markersBySection).map(([sectionId, markers]) => [
+          sectionId,
+          [...markers].sort((left, right) => {
+            const leftTime = left.acceptedAt ? Date.parse(left.acceptedAt) : 0;
+            const rightTime = right.acceptedAt ? Date.parse(right.acceptedAt) : 0;
+            return rightTime - leftTime || left.title.localeCompare(right.title);
+          })
+        ])
+      ),
       decisionIdsBySection: Object.fromEntries(
         Object.entries(decisionIdsBySection).map(([sectionId, decisionIds]) => [sectionId, uniqueStrings(decisionIds)])
       ),
