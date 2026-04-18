@@ -636,3 +636,40 @@ Socrates can use these to:
 - No real Postgres-backed end-to-end integration harness in tests yet; current tests are service and route contract level
 - No separate parse-run table; parse revisioning is attached to `document_versions`
 - The generation logic still uses fallback heuristics when AI providers are absent or invalid; this is intentional, but not a substitute for richer domain prompts later
+
+---
+
+## Audit Notes — 2026-04-17
+
+Production audit completed against the implemented codebase.
+
+### Constructor signature (current)
+```typescript
+new DocumentService(
+  prisma: PrismaClient,
+  storage: StorageDriver,
+  jobs: JobDispatcher,
+  embeddings: EmbeddingProvider,
+  transcriptionProvider: TranscriptionProvider,  // Added: audio upload support
+  projectService: ProjectService,
+  auditService: AuditService,
+  telemetry: TelemetryService                    // Added: metrics/duration observability
+)
+```
+
+### Migrations applied (6 total)
+| Migration | Purpose |
+|-----------|---------|
+| 0001_init | Core schema: orgs, projects, users, documents, sections, chunks, brain, audit |
+| 0002_socrates_and_dashboard | Socrates sessions/messages/citations/open-targets; dashboard snapshot |
+| 0003_socrates_perf_indexes | Retrieval + suggestion indexes for Socrates |
+| 0004_socrates_hardening | Suggestion TTL, precomputed suggestion table |
+| 0005_communication_embeddings | Communication message chunk embeddings for CHR-RAG |
+| 0006_live_doc_viewer_read_model_indexes | Read-model indexes for viewer payload queries |
+
+### Bug fix applied
+**Stale suggestion window on embed completion**: `embedDocumentChunks` now calls `socratesSuggestion.deleteMany` for the project immediately after marking the document version `ready`, before enqueueing `generate_source_package`. Previously, suggestions were only invalidated at the end of the full brain pipeline (`createAcceptedArtifact`). If the pipeline failed midway, stale suggestions persisted until the 15-minute TTL expired.
+
+### Test coverage
+- 117 tests passing across all pipeline stages
+- Covers: stale parse revision skipping, monotonic chunk indices, viewer markers, provenance, search, audio transcription, fallback version selection, and message evidence

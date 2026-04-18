@@ -292,6 +292,8 @@ export class SocratesService {
 
     sendEvent("message_created", { userMessageId: userMessage.id, assistantMessageId: assistantMessage.id });
 
+    let streamTimeout: ReturnType<typeof setTimeout> | undefined;
+
     try {
       // 3. Build context for retrieval.
       const intent = classifyIntent(userContent);
@@ -357,12 +359,17 @@ export class SocratesService {
       // 6. Stream from Claude.
       // ANTHROPIC_API_KEY presence is verified at the top of streamAnswer.
       const anthropicClient = new Anthropic({ apiKey: this.env.ANTHROPIC_API_KEY! });
-      const stream = anthropicClient.messages.stream({
-        model: this.env.ANTHROPIC_MODEL_REASONING,
-        max_tokens: 3000,
-        system: SOCRATES_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-      });
+      const abortController = new AbortController();
+      streamTimeout = setTimeout(() => abortController.abort(), 120_000);
+      const stream = anthropicClient.messages.stream(
+        {
+          model: this.env.ANTHROPIC_MODEL_REASONING,
+          max_tokens: 3000,
+          system: SOCRATES_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: userPrompt }],
+        },
+        { signal: abortController.signal }
+      );
 
       let fullText = "";
 
@@ -474,6 +481,7 @@ export class SocratesService {
       const message = error instanceof Error ? error.message : "Generation failed";
       sendEvent("error", { code: "generation_failed", message });
     } finally {
+      clearTimeout(streamTimeout);
       reply.raw.end();
     }
   }

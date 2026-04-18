@@ -871,4 +871,204 @@ describe("DocumentService", () => {
       })
     );
   });
+
+  it("returns message evidence with linked documents, changes, and decisions", async () => {
+    const prisma = {
+      communicationMessage: {
+        findFirstOrThrow: vi.fn().mockResolvedValue({
+          id: "msg-1",
+          threadId: "thread-1",
+          senderLabel: "Client stakeholder",
+          sentAt: new Date("2026-02-01T10:00:00.000Z"),
+          bodyText: "We need the reporting feature to show weekly summaries.",
+          messageType: "email",
+          replyToMessageId: null,
+          thread: {
+            id: "thread-1",
+            subject: "Reporting feature request",
+            participantsJson: ["client@acme.com"],
+            startedAt: new Date("2026-02-01T09:00:00.000Z"),
+            lastMessageAt: new Date("2026-02-01T10:00:00.000Z")
+          }
+        })
+      },
+      specChangeLink: {
+        findMany: vi.fn((args?: any) => {
+          // First call: links from message / thread to proposals
+          if (args?.where?.OR) {
+            return Promise.resolve([
+              {
+                specChangeProposalId: "proposal-1",
+                linkType: "message",
+                linkRefId: "msg-1",
+                proposal: {
+                  id: "proposal-1",
+                  title: "Add weekly reporting",
+                  summary: "Client requested weekly reporting summaries",
+                  proposalType: "requirement_update",
+                  status: "accepted",
+                  decisionRecordId: "decision-1",
+                  decisionRecord: {
+                    id: "decision-1",
+                    title: "Weekly reporting accepted",
+                    statement: "Implement weekly digest endpoint",
+                    status: "accepted"
+                  }
+                }
+              }
+            ]);
+          }
+          // Second call: section links for the proposal
+          if (args?.where?.specChangeProposalId?.in) {
+            return Promise.resolve([
+              { specChangeProposalId: "proposal-1", linkType: "document_section", linkRefId: "sec-1" }
+            ]);
+          }
+          return Promise.resolve([]);
+        })
+      },
+      documentSection: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "sec-1",
+            anchorId: "reporting",
+            pageNumber: 5,
+            headingPath: ["Features", "Reporting"],
+            normalizedText: "The system shall support weekly reporting.",
+            orderIndex: 10,
+            documentVersionId: "ver-1",
+            documentVersion: {
+              documentId: "doc-1",
+              document: { title: "Core PRD" }
+            }
+          }
+        ])
+      },
+      auditEvent: {
+        create: vi.fn().mockResolvedValue(undefined)
+      }
+    } as any;
+
+    const telemetry = { increment: vi.fn(), observeDuration: vi.fn() };
+
+    const service = new DocumentService(
+      prisma,
+      {} as any,
+      { enqueue: vi.fn() } as any,
+      { embedText: vi.fn() } as any,
+      { transcribeAudio: vi.fn() } as any,
+      {
+        ensureProjectManager: vi.fn(),
+        ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "manager" })
+      } as any,
+      { record: vi.fn() } as any,
+      telemetry as any
+    );
+
+    const result = await service.getMessageEvidence("project-1", "msg-1", "user-1");
+
+    expect(result.message.id).toBe("msg-1");
+    expect(result.message.senderLabel).toBe("Client stakeholder");
+    expect(result.thread.id).toBe("thread-1");
+    expect(result.thread.subject).toBe("Reporting feature request");
+
+    expect(result.linkedDocuments).toHaveLength(1);
+    expect(result.linkedDocuments[0]).toMatchObject({
+      sectionId: "sec-1",
+      anchorId: "reporting",
+      pageNumber: 5,
+      documentId: "doc-1",
+      documentTitle: "Core PRD",
+      openTarget: expect.objectContaining({ targetType: "document_section" })
+    });
+
+    expect(result.linkedChanges).toHaveLength(1);
+    expect(result.linkedChanges[0]).toMatchObject({
+      proposalId: "proposal-1",
+      title: "Add weekly reporting",
+      status: "accepted"
+    });
+
+    expect(result.linkedDecisions).toHaveLength(1);
+    expect(result.linkedDecisions[0]).toMatchObject({
+      id: "decision-1",
+      title: "Weekly reporting accepted"
+    });
+
+    expect(result.openTargets.thread).toMatchObject({ targetType: "thread" });
+    expect(result.openTargets.documents).toHaveLength(1);
+  });
+
+  it("returns empty linked arrays when message has no proposal associations", async () => {
+    const prisma = {
+      communicationMessage: {
+        findFirstOrThrow: vi.fn().mockResolvedValue({
+          id: "msg-orphan",
+          threadId: "thread-orphan",
+          senderLabel: "Client",
+          sentAt: new Date("2026-03-01T08:00:00.000Z"),
+          bodyText: "Just a general question.",
+          messageType: "slack",
+          replyToMessageId: null,
+          thread: {
+            id: "thread-orphan",
+            subject: "General question",
+            participantsJson: [],
+            startedAt: new Date("2026-03-01T08:00:00.000Z"),
+            lastMessageAt: new Date("2026-03-01T08:00:00.000Z")
+          }
+        })
+      },
+      specChangeLink: {
+        findMany: vi.fn().mockResolvedValue([])
+      },
+      auditEvent: {
+        create: vi.fn().mockResolvedValue(undefined)
+      }
+    } as any;
+
+    const service = new DocumentService(
+      prisma,
+      {} as any,
+      { enqueue: vi.fn() } as any,
+      { embedText: vi.fn() } as any,
+      { transcribeAudio: vi.fn() } as any,
+      {
+        ensureProjectManager: vi.fn(),
+        ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "dev" })
+      } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
+    );
+
+    const result = await service.getMessageEvidence("project-1", "msg-orphan", "dev-1");
+
+    expect(result.linkedDocuments).toEqual([]);
+    expect(result.linkedChanges).toEqual([]);
+    expect(result.linkedDecisions).toEqual([]);
+    expect(result.openTargets.documents).toEqual([]);
+  });
+
+  it("rejects client role access to message evidence", async () => {
+    const prisma = {} as any;
+
+    const service = new DocumentService(
+      prisma,
+      {} as any,
+      { enqueue: vi.fn() } as any,
+      { embedText: vi.fn() } as any,
+      { transcribeAudio: vi.fn() } as any,
+      {
+        ensureProjectManager: vi.fn(),
+        ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "client" })
+      } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
+    );
+
+    await expect(service.getMessageEvidence("project-1", "msg-1", "client-1")).rejects.toMatchObject({
+      statusCode: 403,
+      code: "client_message_access_forbidden"
+    });
+  });
 });

@@ -797,3 +797,42 @@ Feature 4 does not directly depend on Feature 3 for truth creation. But later su
 | Thread list/detail viewer | Deferred | Only single-message evidence route exists for now. |
 | Vector-based document search in viewer | Deferred | Viewer search remains lexical and deterministic. |
 | Full infra-backed staging validation | Deferred | Application-level build/test/Prisma validation are complete. |
+
+---
+
+## Audit Notes — 2026-04-17
+
+Production audit completed against the implemented codebase.
+
+### Core Feature 3 methods confirmed implemented
+| Method | Purpose |
+|--------|---------|
+| `getViewerPayload` | Paginated viewer payload: sections, highlights, change markers, message refs, open targets |
+| `searchDocument` | Lexical section search with snippet extraction and open-target generation |
+| `getAnchorProvenance` | Full provenance bundle for a given anchor: chunks, brain nodes, changes, decisions, message refs |
+| `getMessageEvidence` | Reverse evidence navigation: given a messageId, return linked sections and changes |
+
+### Migration 0006 — live_doc_viewer_read_model_indexes
+Added indexes specifically for viewer payload query performance:
+- `document_sections(document_version_id, order_index)` — section page window queries
+- `document_sections(document_version_id, anchor_id)` — anchor lookup for provenance
+- `spec_change_links(link_ref_id, link_type)` — change marker resolution
+
+### Test coverage
+- `searchDocument`: covered (returns snippet, open target, and role-filtered results)
+- `getAnchorProvenance`: covered (brain nodes, changes, decisions, message refs, open targets)
+- `getMessageEvidence`: 3 new tests added in this audit
+  - Returns full evidence payload with linked documents, changes, and decisions
+  - Returns empty arrays when message has no proposal associations
+  - Rejects client role with 403 `client_message_access_forbidden`
+
+### Role enforcement
+- `getViewerPayload`: client role strips message refs and decision ids from sections
+- `searchDocument`: client role excluded from internal-visibility documents
+- `getAnchorProvenance`: manager/dev only (enforced by project access check)
+- `getMessageEvidence`: client role explicitly rejected with 403
+
+### Interaction with Feature 1 and 2
+- Feature 1 produces `documentSection`, `documentChunk`, `specChangeLink`, `brainSectionLink` records consumed by Feature 3
+- Feature 2 citations produce `open_target` payloads that match the `document_section` open-target shape from Feature 3
+- Socrates citation highlighting in the viewer reuses the same anchor contracts defined by Feature 3

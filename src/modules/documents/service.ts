@@ -1366,6 +1366,13 @@ export class DocumentService {
         data: { status: "ready" }
       });
 
+      // Invalidate stale Socrates suggestions immediately. The brain pipeline
+      // that follows may fail partway through; waiting until it completes
+      // (createAcceptedArtifact) would leave clients on stale answers.
+      await this.prisma.socratesSuggestion.deleteMany({
+        where: { session: { projectId: version.projectId } }
+      });
+
       await this.finishJob(JobNames.embedDocumentChunks, embedKey);
       const sourceKey = jobKeys.generateSourcePackage(
         version.projectId,

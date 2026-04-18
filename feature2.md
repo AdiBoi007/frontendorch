@@ -862,7 +862,26 @@ Feature 2 is a pure consumer of Feature 1's outputs. It does not write to any Fe
 | `RETRIEVAL_MIN_SCORE` hard filter | Implemented | `hybridRetrieve` now filters candidates below `minScore` before reranking. |
 | `neighborSectionIds` manual override | Deferred | The `HybridRetrievalInput` accepts `neighborSectionIds[]` for manual injection but callers always pass `undefined`, triggering auto-resolution. |
 | Suggestion invalidation on accepted change | Implemented | Feature 1 accepted artifact creation deletes Socrates suggestions for sessions in the affected project. |
-| Streaming timeout | Deferred | No explicit server-side timeout or cancellation budget is applied to the Anthropic stream yet. |
+| Streaming timeout | Implemented | `streamAnswer` wraps the Anthropic stream with a 120-second `AbortController`. On abort, the assistant message is marked `failed` and the SSE connection receives an error event before closing. |
 | Dashboard snapshot writes | Not Feature 2 | `DashboardSnapshot` schema is present; writes are the responsibility of Feature 4. |
 | Golden evaluation set | Not yet built | Manual evaluation questions are documented in `docs/SOCRATES_RAG_SPEC.md §17.3` but no automated evaluation harness exists yet. |
 | Multi-session per user | Not restricted | A user can have multiple sessions per project. No deduplication. Session state is lightweight (no cost per idle session). |
+
+---
+
+## Audit Notes — 2026-04-17
+
+Production audit completed against the implemented codebase.
+
+### Bug fix applied
+**Missing streaming timeout**: `SocratesService.streamAnswer` now creates an `AbortController` before initiating the Anthropic stream and sets a 120-second `setTimeout` to call `abortController.abort()`. The signal is passed to the Anthropic SDK's `messages.stream` call as the second argument (`{ signal: abortController.signal }`). In the `finally` block, `clearTimeout` is always called to prevent timer leaks. If the stream is aborted, the existing error handler marks the assistant message `failed`, sends an SSE `error` event to the client, and closes the connection.
+
+### Confirmed implemented
+- 10 `QueryIntent` values: `product_overview`, `requirement_detail`, `change_history`, `decision_record`, `dependency_map`, `blocker_status`, `feature_scope`, `stakeholder_update`, `review_readiness`, `general`
+- 6 `PageContext` values: `product_brain`, `document_viewer`, `socrates`, `changes`, `decisions`, `client_view`
+- CHR-RAG 6-layer pipeline: domain selection → hybrid retrieval → neighbor expansion → intent routing → reranking → prompt construction with injection defense
+- SSE streaming lifecycle: persist user msg → placeholder assistant msg → stream tokens → validate Zod schema → persist citations/open-targets → mark completed
+- Suggestion invalidation now happens at two points: embed completion (Feature 1 fix) and accepted artifact creation (brain pipeline end)
+
+### Test coverage
+- 117 tests passing total (all features combined)
