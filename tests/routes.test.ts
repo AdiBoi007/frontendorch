@@ -120,6 +120,38 @@ function createContext() {
     applyAcceptedProposal: vi.fn(async () => undefined)
   };
 
+  const dashboardService = {
+    getGeneralDashboard: vi.fn(async () => ({
+      scope: "general",
+      summary: { activeProjectCount: 1, orgHeadcount: 2, projectsNeedingAttention: [] }
+    })),
+    getProjectDashboard: vi.fn(async () => ({
+      scope: "project",
+      project: { id: "project-1", orgId: "org-1", name: "Project", slug: "project" },
+      teamSummary: { headcount: 1, roleBreakdown: { manager: 1 }, members: [], workload: { label: "healthy", overloadedCount: 0, watchCount: 0, unknownCount: 0 } },
+      documents: { totalCount: 1, readinessState: "ready", counts: { pending: 0, processing: 0, ready: 1, partial: 0, failed: 0 }, latestProcessedAt: null, documents: [] },
+      brain: { freshnessState: "current", latestVersionId: "brain-1", latestVersionNumber: 1, acceptedAt: null, latestAcceptedChangeAt: null, latestAcceptedDecisionAt: null },
+      changes: { pendingCount: 0, acceptedRecentCount: 0, latestAcceptedAt: null, pendingSummaries: [], recentAccepted: [] },
+      decisions: { openCount: 0, latestAcceptedAt: null, openItems: [] },
+      attention: { score: 0, label: "healthy", reasons: [] },
+      quickLinks: { dashboardPath: "/projects/project-1/dashboard", brainPath: "/projects/project-1/brain/current", documentsPath: "/projects/project-1/documents", docViewerPath: null, docViewerState: null, brainViewerState: { pageContext: "dashboard_project", selectedRefType: "dashboard_scope", selectedRefId: "project-1" } },
+      recentActivity: { latestAcceptedChangeAt: null, latestDecisionAt: null, latestDocumentProcessedAt: null }
+    })),
+    getProjectTeamSummary: vi.fn(async () => ({
+      headcount: 2,
+      roleBreakdown: { manager: 1, dev: 1 },
+      members: [],
+      workload: { label: "watch", overloadedCount: 0, watchCount: 1, unknownCount: 0 }
+    })),
+    refreshProjectDashboard: vi.fn(async () => ({
+      queued: false,
+      scope: "project",
+      snapshotId: "snap-1",
+      computedAt: new Date("2026-01-01T00:00:00.000Z").toISOString()
+    })),
+    refreshSnapshotJob: vi.fn(async () => undefined)
+  };
+
   return {
     env: {
       NODE_ENV: "test",
@@ -171,7 +203,8 @@ function createContext() {
       documentService,
       brainService,
       changeProposalService,
-      auditService: { record: vi.fn() }
+      auditService: { record: vi.fn() },
+      dashboardService
     }
   } as unknown as AppContext;
 }
@@ -371,5 +404,83 @@ describe("route contracts", () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-type"]).toContain("text/plain");
     expect(response.body).toContain("orchestra_http_requests_total");
+  });
+
+  it("serves the general dashboard to managers only", async () => {
+    const managerResponse = await app.inject({
+      method: "GET",
+      url: "/v1/dashboard/general",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(managerResponse.statusCode).toBe(200);
+    expect(context.services.dashboardService.getGeneralDashboard).toHaveBeenCalledWith({
+      orgId: "org-1",
+      actorUserId: "user-1",
+      forceRefresh: false
+    });
+
+    const devResponse = await app.inject({
+      method: "GET",
+      url: "/v1/dashboard/general",
+      headers: {
+        authorization: `Bearer ${createToken("dev")}`
+      }
+    });
+
+    expect(devResponse.statusCode).toBe(403);
+  });
+
+  it("serves project dashboard and team summary", async () => {
+    const dashboardResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/dashboard?forceRefresh=true",
+      headers: {
+        authorization: `Bearer ${createToken("dev")}`
+      }
+    });
+
+    expect(dashboardResponse.statusCode).toBe(200);
+    expect(context.services.dashboardService.getProjectDashboard).toHaveBeenCalledWith(
+      "37e6d602-cc1b-4cc9-bc6c-5547241fbf90",
+      "user-1",
+      { forceRefresh: true }
+    );
+
+    const teamResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/team-summary",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(teamResponse.statusCode).toBe(200);
+    expect(teamResponse.json().data.headcount).toBe(2);
+  });
+
+  it("enforces manager-only dashboard refresh", async () => {
+    const managerResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/dashboard/refresh",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(managerResponse.statusCode).toBe(200);
+    expect(context.services.dashboardService.refreshProjectDashboard).toHaveBeenCalled();
+
+    const devResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/dashboard/refresh",
+      headers: {
+        authorization: `Bearer ${createToken("dev")}`
+      }
+    });
+
+    expect(devResponse.statusCode).toBe(403);
   });
 });

@@ -4,6 +4,7 @@ import type { DocumentVisibility, PrismaClient } from "@prisma/client";
 import { AppError } from "../../app/errors.js";
 import type { EmbeddingProvider } from "../../lib/ai/provider.js";
 import type { TranscriptionProvider } from "../../lib/ai/provider.js";
+import { enqueueProjectDashboardRefreshByProjectId } from "../../lib/dashboard/refresh.js";
 import { jobKeys } from "../../lib/jobs/keys.js";
 import type { JobDispatcher } from "../../lib/jobs/types.js";
 import { JobNames } from "../../lib/jobs/types.js";
@@ -342,6 +343,8 @@ export class DocumentService {
         parseRevision: created.parseRevision
       }
     });
+
+    await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, input.projectId, "document_uploaded");
 
     return created;
   }
@@ -1110,6 +1113,8 @@ export class DocumentService {
       }
     });
 
+    await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, projectId, "document_reprocessed");
+
     return {
       ok: true,
       documentVersionId: version.id,
@@ -1205,6 +1210,12 @@ export class DocumentService {
       const chunkKey = jobKeys.chunkDocument(documentVersionId, targetParseRevision);
       await this.recordQueuedJob(JobNames.chunkDocument, chunkKey, payload);
       await this.jobs.enqueue(JobNames.chunkDocument, payload, chunkKey);
+      await enqueueProjectDashboardRefreshByProjectId(
+        this.prisma,
+        this.jobs,
+        version.projectId,
+        "document_parsed"
+      );
       return { skipped: false };
     } catch (error) {
       await this.prisma.documentVersion.updateMany({
@@ -1220,6 +1231,12 @@ export class DocumentService {
         }
       });
       await this.failJob(JobNames.parseDocument, parseKey, error);
+      await enqueueProjectDashboardRefreshByProjectId(
+        this.prisma,
+        this.jobs,
+        version.projectId,
+        "document_parse_failed"
+      );
       throw error;
     }
   }
@@ -1380,6 +1397,12 @@ export class DocumentService {
       );
       await this.recordQueuedJob(JobNames.generateSourcePackage, sourceKey, { projectId: version.projectId });
       await this.jobs.enqueue(JobNames.generateSourcePackage, { projectId: version.projectId }, sourceKey);
+      await enqueueProjectDashboardRefreshByProjectId(
+        this.prisma,
+        this.jobs,
+        version.projectId,
+        "document_ready"
+      );
       return { skipped: false };
     } catch (error) {
       await this.prisma.documentVersion.updateMany({
@@ -1390,6 +1413,12 @@ export class DocumentService {
         data: { status: "partial" }
       });
       await this.failJob(JobNames.embedDocumentChunks, embedKey, error);
+      await enqueueProjectDashboardRefreshByProjectId(
+        this.prisma,
+        this.jobs,
+        version.projectId,
+        "document_partial"
+      );
       throw error;
     }
   }

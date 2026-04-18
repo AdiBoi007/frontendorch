@@ -8,6 +8,7 @@ import type {
 } from "@prisma/client";
 import { AppError } from "../../app/errors.js";
 import type { GenerationProvider } from "../../lib/ai/provider.js";
+import { enqueueProjectDashboardRefreshByProjectId } from "../../lib/dashboard/refresh.js";
 import { jobKeys } from "../../lib/jobs/keys.js";
 import { JobNames, type JobDispatcher, type JobName } from "../../lib/jobs/types.js";
 import { AuditService } from "../audit/service.js";
@@ -438,6 +439,7 @@ export class BrainService {
         signature
       );
       await this.finishJob(JobNames.generateProductBrain, jobKey);
+      await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, projectId, "product_brain_accepted");
       return created.artifact;
     } catch (error) {
       await this.failJob(JobNames.generateProductBrain, jobKey, error);

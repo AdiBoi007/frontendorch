@@ -9,6 +9,7 @@ import { AuditService } from "./modules/audit/service.js";
 import { AuthService } from "./modules/auth/service.js";
 import { BrainService } from "./modules/brain/service.js";
 import { ChangeProposalService } from "./modules/changes/service.js";
+import { DashboardService } from "./modules/dashboard/service.js";
 import { DocumentService } from "./modules/documents/service.js";
 import { ProjectService } from "./modules/projects/service.js";
 import { SocratesService } from "./modules/socrates/service.js";
@@ -24,13 +25,12 @@ export function buildContext(input: {
   transcriptionProvider: TranscriptionProvider;
   telemetry: TelemetryService;
 }): AppContext {
-  const auditService = new AuditService(input.prisma);
-  const projectService = new ProjectService(input.prisma, auditService);
-
   const jobs =
     input.env.QUEUE_MODE === "inline"
       ? new InlineJobDispatcher({})
       : new BullMqDispatcher(input.env.REDIS_URL, `${input.env.QUEUE_PREFIX}-jobs`);
+  const auditService = new AuditService(input.prisma);
+  const projectService = new ProjectService(input.prisma, auditService, jobs);
 
   const brainService = new BrainService(input.prisma, input.generationProvider, jobs, projectService, auditService);
   const documentService = new DocumentService(
@@ -59,6 +59,7 @@ export function buildContext(input: {
     projectService,
     auditService
   );
+  const dashboardService = new DashboardService(input.prisma, projectService, auditService, input.telemetry);
 
   const services = {
     auditService,
@@ -67,7 +68,8 @@ export function buildContext(input: {
     documentService,
     brainService,
     changeProposalService,
-    socratesService
+    socratesService,
+    dashboardService
   };
 
   if (jobs instanceof InlineJobDispatcher) {
@@ -108,6 +110,11 @@ export function buildContext(input: {
       precompute_socrates_suggestions: async (payload) => {
         const { projectId, sessionId } = payload as { projectId: string; sessionId: string };
         await services.socratesService.precomputeSuggestions(projectId, sessionId);
+      },
+      refresh_dashboard_snapshot: async (payload) => {
+        await services.dashboardService.refreshSnapshotJob(
+          payload as { scope: "general" | "project"; orgId: string; projectId?: string | null; reason?: string }
+        );
       }
     };
   }

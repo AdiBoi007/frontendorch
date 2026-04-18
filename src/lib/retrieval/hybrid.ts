@@ -22,6 +22,7 @@ import { AppError } from "../../app/errors.js";
 
 export interface HybridRetrievalInput {
   projectId: string;
+  pageContext?: string;
   query: string;
   queryEmbedding: number[];
   intent: QueryIntent;
@@ -372,10 +373,12 @@ async function retrieveDecisions(
 async function retrieveDashboard(
   prisma: PrismaClient,
   projectId: string,
-  orgId: string
+  orgId: string,
+  pageContext?: string
 ): Promise<RetrievalCandidate[]> {
+  const scope = pageContext === "dashboard_general" ? "general" : "project";
   const snapshot = await prisma.dashboardSnapshot.findFirst({
-    where: { orgId, projectId, scope: "project" },
+    where: scope === "general" ? { orgId, projectId: null, scope } : { orgId, projectId, scope },
     orderBy: { computedAt: "desc" },
   });
 
@@ -386,7 +389,7 @@ async function retrieveDashboard(
       id: snapshot.id,
       sourceType: "dashboard_snapshot" as const,
       content: JSON.stringify(snapshot.payloadJson),
-      label: "Project Dashboard Snapshot",
+      label: scope === "general" ? "General Dashboard Snapshot" : "Project Dashboard Snapshot",
       finalScore: 0.7,
       isClientSafe: true,
       isInternalOnly: false,
@@ -683,7 +686,7 @@ export async function hybridRetrieve(
   }
 
   if (input.domains.includeDashboard) {
-    tasks.push(retrieveDashboard(prisma, input.projectId, orgId));
+    tasks.push(retrieveDashboard(prisma, input.projectId, orgId, input.pageContext));
   }
 
   if (input.domains.includeCommunications && !input.isClientContext) {

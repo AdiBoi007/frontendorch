@@ -12,6 +12,7 @@ import { registerDocumentRoutes } from "../modules/documents/routes.js";
 import { registerBrainRoutes } from "../modules/brain/routes.js";
 import { registerChangeProposalRoutes } from "../modules/changes/routes.js";
 import { registerSocratesRoutes } from "../modules/socrates/routes.js";
+import { registerDashboardRoutes } from "../modules/dashboard/routes.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -65,6 +66,7 @@ export async function buildApp(context: AppContext) {
   await app.register(registerBrainRoutes, { prefix: "/v1" });
   await app.register(registerChangeProposalRoutes, { prefix: "/v1" });
   await app.register(registerSocratesRoutes, { prefix: "/v1" });
+  await app.register(registerDashboardRoutes, { prefix: "/v1" });
 
   app.setErrorHandler((error, request, reply) => {
     const appError = toAppError(error);

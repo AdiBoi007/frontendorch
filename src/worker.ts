@@ -60,6 +60,11 @@ registerWorker(context, `${env.QUEUE_PREFIX}-jobs`, {
   [JobNames.precomputeSocratesSuggestions]: async (payload) => {
     const { projectId, sessionId } = payload as { projectId: string; sessionId: string };
     await context.services.socratesService.precomputeSuggestions(projectId, sessionId);
+  },
+  [JobNames.refreshDashboardSnapshot]: async (payload) => {
+    await context.services.dashboardService.refreshSnapshotJob(
+      payload as { scope: "general" | "project"; orgId: string; projectId?: string | null; reason?: string }
+    );
   }
 });
 

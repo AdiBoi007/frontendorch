@@ -311,6 +311,7 @@ export class SocratesService {
         project.orgId,
         {
           projectId,
+          pageContext: session.pageContext,
           query: userContent,
           queryEmbedding,
           intent,

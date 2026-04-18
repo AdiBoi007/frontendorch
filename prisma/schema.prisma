@@ -748,6 +748,7 @@ model DashboardSnapshot {
   project     Project?               @relation(fields: [projectId], references: [id])
 
   @@index([orgId, scope, computedAt(sort: Desc)])
+  @@index([projectId, scope, computedAt(sort: Desc)])
   @@map("dashboard_snapshots")
 }
 

@@ -11,6 +11,7 @@ import type { AuthService } from "../modules/auth/service.js";
 import type { BrainService } from "../modules/brain/service.js";
 import type { ChangeProposalService } from "../modules/changes/service.js";
 import type { DocumentService } from "../modules/documents/service.js";
+import type { DashboardService } from "../modules/dashboard/service.js";
 import type { ProjectService } from "../modules/projects/service.js";
 import type { SocratesService } from "../modules/socrates/service.js";
 
@@ -22,6 +23,7 @@ export interface AppServices {
   changeProposalService: ChangeProposalService;
   auditService: AuditService;
   socratesService: SocratesService;
+  dashboardService: DashboardService;
 }
 
 export interface AppContext {

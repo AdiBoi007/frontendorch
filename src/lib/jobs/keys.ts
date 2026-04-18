@@ -22,5 +22,8 @@ export const jobKeys = {
   },
   applyAcceptedChange(proposalId: string) {
     return `apply-change:${proposalId}`;
+  },
+  refreshDashboardSnapshot(scope: "general" | "project", targetId: string, signature: string) {
+    return `dashboard:${scope}:${targetId}:${signature}`;
   }
 } as const;

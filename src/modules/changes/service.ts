@@ -1,4 +1,5 @@
 import { AppError } from "../../app/errors.js";
+import { enqueueProjectDashboardRefreshByProjectId } from "../../lib/dashboard/refresh.js";
 import { jobKeys } from "../../lib/jobs/keys.js";
 import type { JobDispatcher } from "../../lib/jobs/types.js";
 import { JobNames } from "../../lib/jobs/types.js";
@@ -126,6 +127,8 @@ export class ChangeProposalService {
       payload: input
     });
 
+    await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, projectId, "change_proposal_created");
+
     return this.get(projectId, proposal.id, actorUserId);
   }
 
@@ -230,6 +233,8 @@ export class ChangeProposalService {
       payload: {}
     });
 
+    await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, projectId, "change_proposal_accepted");
+
     return this.get(projectId, proposalId, actorUserId);
   }
 
@@ -261,6 +266,8 @@ export class ChangeProposalService {
       entityId: proposalId,
       payload: {}
     });
+
+    await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, projectId, "change_proposal_rejected");
 
     return this.get(projectId, proposalId, actorUserId);
   }
@@ -308,6 +315,8 @@ export class ChangeProposalService {
         acceptedBrainVersionId: productBrain.id
       }
     });
+
+    await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, projectId, "accepted_change_applied");
 
     return productBrain;
   }

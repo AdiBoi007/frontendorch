@@ -1,12 +1,15 @@
 import type { PrismaClient } from "@prisma/client";
 import { AppError } from "../../app/errors.js";
+import { enqueueProjectDashboardRefreshByProjectId } from "../../lib/dashboard/refresh.js";
+import type { JobDispatcher } from "../../lib/jobs/types.js";
 import { toSlug } from "../../lib/utils/slug.js";
 import { AuditService } from "../audit/service.js";
 
 export class ProjectService {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly jobs: JobDispatcher
   ) {}
 
   async createProject(input: {
@@ -44,6 +47,8 @@ export class ProjectService {
       entityId: project.id,
       payload: { name: project.name }
     });
+
+    await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, project.id, "project_created");
 
     return project;
   }

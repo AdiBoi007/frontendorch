@@ -822,6 +822,7 @@ Return org-wide dashboard snapshot.
 - project/member distribution
 - projects needing attention
 - recent change/decision pressure
+- optional `forceRefresh=true` query for manager-triggered inline rebuild
 
 ---
 
@@ -836,6 +837,7 @@ Return project dashboard snapshot.
 - latest brain version summary
 - accepted/pending change pressure
 - quick navigation references
+- optional `forceRefresh=true` query for inline rebuild of the project snapshot
 
 ---
 
@@ -848,6 +850,12 @@ This supports dashboard cards and secondary views without loading full brain/doc
 
 ## 11.4 POST /v1/projects/:projectId/dashboard/refresh
 Manager-only internal/admin route to force refresh snapshot.
+
+### Response
+- `queued`
+- `scope`
+- `snapshotId`
+- `computedAt`
 
 ---
 
