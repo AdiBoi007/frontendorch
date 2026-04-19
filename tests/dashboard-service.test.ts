@@ -356,4 +356,162 @@ describe("DashboardService", () => {
       scope: "general"
     });
   });
+
+  it("propagates null allocation to unknown workload when any project has missing allocationPercent", async () => {
+    const snapshotCreate = vi.fn(async ({ data }) => ({
+      id: "snap-alloc-1",
+      computedAt: new Date("2026-04-19T10:00:00.000Z"),
+      payloadJson: data.payloadJson
+    }));
+    const prisma = {
+      dashboardSnapshot: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: snapshotCreate,
+        update: vi.fn()
+      },
+      organization: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: "org-1", name: "Acme", slug: "acme" })
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "user-1", displayName: "Dev A", workspaceRoleDefault: "dev" }
+        ])
+      },
+      project: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "project-1",
+            name: "Apollo",
+            slug: "apollo",
+            status: "active",
+            // User has a known allocation in project-1
+            members: [
+              {
+                id: "pm-1",
+                projectRole: "dev",
+                roleInProject: "Backend",
+                allocationPercent: 50,
+                weeklyCapacityHours: 20,
+                user: { id: "user-1", displayName: "Dev A", workspaceRoleDefault: "dev", isActive: true }
+              }
+            ],
+            documents: [],
+            changeProposals: [],
+            decisions: [],
+            artifacts: []
+          },
+          {
+            id: "project-2",
+            name: "Hermes",
+            slug: "hermes",
+            status: "active",
+            // Same user has null allocation in project-2 — total must become null
+            members: [
+              {
+                id: "pm-2",
+                projectRole: "dev",
+                roleInProject: "Backend",
+                allocationPercent: null,
+                weeklyCapacityHours: 20,
+                user: { id: "user-1", displayName: "Dev A", workspaceRoleDefault: "dev", isActive: true }
+              }
+            ],
+            documents: [],
+            changeProposals: [],
+            decisions: [],
+            artifacts: []
+          }
+        ])
+      }
+    } as any;
+
+    const service = new DashboardService(
+      prisma,
+      { ensureProjectAccess: vi.fn(), ensureProjectManager: vi.fn() } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
+    );
+
+    const payload = await service.getGeneralDashboard({ orgId: "org-1", actorUserId: "manager-1" });
+
+    // The overloadedMembers list (summary.overloadedMembers) contains all members
+    // sorted by allocation desc. user-1 appears once with totalAllocationPercent = null
+    // because one component is null, so workloadLabel must be "unknown".
+    const userEntry = payload.summary.overloadedMembers.find(
+      (member: { userId: string }) => member.userId === "user-1"
+    );
+    expect(userEntry).toBeDefined();
+    expect(userEntry!.totalAllocationPercent).toBeNull();
+    expect(userEntry!.workloadLabel).toBe("unknown");
+  });
+
+  it("returns movement label slow when brain is blocked and no pending changes", async () => {
+    const snapshotCreate = vi.fn(async ({ data }) => ({
+      id: "snap-movement-1",
+      computedAt: new Date("2026-04-19T10:00:00.000Z"),
+      payloadJson: data.payloadJson
+    }));
+    const prisma = {
+      dashboardSnapshot: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: snapshotCreate,
+        update: vi.fn()
+      },
+      organization: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: "org-1", name: "Acme", slug: "acme" })
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: "user-1", displayName: "Manager", workspaceRoleDefault: "manager" }
+        ])
+      },
+      project: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "project-1",
+            name: "Blocked",
+            slug: "blocked",
+            status: "active",
+            members: [
+              {
+                id: "pm-1",
+                projectRole: "manager",
+                roleInProject: "Lead",
+                allocationPercent: 30,
+                weeklyCapacityHours: 20,
+                user: { id: "user-1", displayName: "Manager", workspaceRoleDefault: "manager", isActive: true }
+              }
+            ],
+            // One failed document → no ready/partial docs → brain is "blocked"
+            documents: [
+              {
+                id: "doc-1",
+                title: "PRD",
+                currentVersionId: "ver-1",
+                versions: [{ id: "ver-1", status: "failed", createdAt: new Date(), processedAt: null }]
+              }
+            ],
+            // No pending changes, no recent accepted changes
+            changeProposals: [],
+            decisions: [],
+            // No accepted brain
+            artifacts: []
+          }
+        ])
+      }
+    } as any;
+
+    const service = new DashboardService(
+      prisma,
+      { ensureProjectAccess: vi.fn(), ensureProjectManager: vi.fn() } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
+    );
+
+    const payload = await service.getGeneralDashboard({ orgId: "org-1", actorUserId: "manager-1" });
+
+    expect(payload.projects).toHaveLength(1);
+    expect(payload.projects[0].brain.freshnessState).toBe("blocked");
+    expect(payload.projects[0].movementLabel).toBe("slow");
+  });
 });

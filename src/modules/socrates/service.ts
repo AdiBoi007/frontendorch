@@ -554,18 +554,26 @@ export class SocratesService {
       `## IMPORTANT: Your previous response was not valid JSON:\n${malformedText.slice(0, 500)}\n\n` +
       `Return ONLY a valid JSON object matching the output schema. No markdown fences. No extra text.`;
 
-    return this.generationProvider.generateObject({
-      prompt: retryPrompt,
-      systemPrompt: SOCRATES_SYSTEM_PROMPT,
-      schema: answerSchema,
-      fallback: () => ({
-        answer_md:
-          "I was unable to produce a structured answer at this time. Please try rephrasing your question.",
-        citations: [],
-        open_targets: [],
-        suggested_prompts: [],
+    const FALLBACK: AnswerSchema = {
+      answer_md:
+        "I was unable to produce a structured answer at this time. Please try rephrasing your question.",
+      citations: [],
+      open_targets: [],
+      suggested_prompts: [],
+    };
+
+    // Race the retry against a 60-second hard timeout. On timeout we resolve
+    // (not reject) with the degraded fallback so the SSE stream always closes
+    // in bounded time rather than hanging until the provider gives up.
+    return Promise.race([
+      this.generationProvider.generateObject({
+        prompt: retryPrompt,
+        systemPrompt: SOCRATES_SYSTEM_PROMPT,
+        schema: answerSchema,
+        fallback: () => FALLBACK,
       }),
-    });
+      new Promise<AnswerSchema>((resolve) => setTimeout(() => resolve(FALLBACK), 60_000)),
+    ]);
   }
 
   private async validateOpenTargets(

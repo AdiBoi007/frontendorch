@@ -961,11 +961,11 @@ export class DashboardService {
             projects: []
           };
 
+        // Propagate null: if any project has an unknown allocation, the cross-project
+        // total is also unknown. Silently ignoring nulls would undercount the load.
         current.totalAllocationPercent =
           member.allocationPercent === null || current.totalAllocationPercent === null
-            ? current.totalAllocationPercent === 0
-              ? member.allocationPercent
-              : current.totalAllocationPercent
+            ? null
             : current.totalAllocationPercent + member.allocationPercent;
         current.projects = Array.from(new Set([...current.projects, project.name]));
         members.set(member.user.id, current);
@@ -1046,7 +1046,7 @@ export class DashboardService {
     if (changes.acceptedRecentCount >= 2 || documents.counts.processing + documents.counts.pending > 0) {
       return "fast" as const;
     }
-    if (brain.freshnessState === "stale" && changes.pendingCount === 0) {
+    if ((brain.freshnessState === "stale" || brain.freshnessState === "blocked") && changes.pendingCount === 0) {
       return "slow" as const;
     }
     return "steady" as const;

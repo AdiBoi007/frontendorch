@@ -712,3 +712,59 @@ The service persists snapshots directly into `dashboard_snapshots`, uses `job_ru
 - no project financials
 - no scheduled background recompute loop beyond mutation-triggered refresh + stale-on-read rebuild
 - no infra-backed end-to-end staging validation in this repo
+
+---
+
+## Audit Notes — 2026-04-19
+
+Full adversarial production audit completed against the implemented codebase. Feature 4 is confirmed fully implemented and integrated with Features 1–3.
+
+### Bugs found and fixed
+
+**Bug 1 — Allocation null propagation (MEDIUM)**
+`buildOrgAllocationSummary` had incorrect null handling in the cross-project allocation accumulator. When any project had `allocationPercent = null` for a user, the logic used a nested ternary that silently kept the previous total instead of propagating null. A user with 50% in project-A and null in project-B incorrectly showed 50% total instead of null (unknown). The fix: replace the nested ternary with a simple `? null : prev + member.allocationPercent`, so any null component makes the total unknown. `buildWorkloadLabel(null)` correctly returns `"unknown"` — confirmed already handled. New test added.
+
+**Bug 2 — Movement label "steady" for blocked brain (LOW)**
+`buildMovementLabel` returned `"steady"` when `brain.freshnessState === "blocked"` and there were no pending changes. A blocked brain with no activity is the slowest possible state — returning "steady" was misleading. The fix: extend the `"slow"` condition to `brain.freshnessState === "stale" || brain.freshnessState === "blocked"`. New test added.
+
+**Bug 3 — `retryStructuredAnswer` no timeout (LOW)**
+`SocratesService.retryStructuredAnswer` (Feature 2) is called after the streaming path completes and the JSON parse fails. It uses `generationProvider.generateObject` with no timeout. The main stream has a 120s AbortController but that only covers the stream itself. Fix: wrap the `generateObject` call with `Promise.race` against a 60s timeout that resolves (not rejects) with the degraded fallback schema. This ensures the SSE connection always closes in bounded time.
+
+### Confirmed integrations (Feature 4 ↔ other features)
+
+| Trigger | Refresh enqueued |
+|---------|-----------------|
+| `generateProductBrain` completes | `enqueueProjectDashboardRefreshByProjectId` reason: `"product_brain_accepted"` |
+| `applyAcceptedProposal` completes | reason: `"accepted_change_applied"` |
+| `accept()` change proposal | reason: `"change_proposal_accepted"` |
+| `reject()` change proposal | reason: `"change_proposal_rejected"` |
+| Change proposal created | reason: `"change_proposal_created"` |
+| Document uploaded | reason: `"document_uploaded"` |
+| Document status → ready | reason: `"document_ready"` |
+| Document status → partial | reason: `"document_partial"` |
+| Document reprocessed | reason: `"document_reprocessed"` |
+| Project created | enqueues general dashboard refresh |
+
+### Migrations (7 total)
+| Migration | Relevant to Dashboard |
+|-----------|----------------------|
+| 0002_socrates_and_dashboard | `DashboardSnapshotScope` enum, `dashboard_snapshots` table, `dashboard_general`/`dashboard_project` page contexts |
+| 0007_dashboard_snapshot_project_index | Index on `(project_id, scope, computed_at DESC)` for project dashboard queries |
+
+### Snapshot architecture confirmed
+- **Staleness threshold**: 5 minutes (`SNAPSHOT_STALE_MS = 5 * 60 * 1000`)
+- **Idempotency key**: `refreshDashboardSnapshot(scope, targetId, "reason:YYYY-MM-DDTHH:mm")` — collapses duplicate refreshes for same scope/target/reason within the same minute bucket
+- **Fallback behavior**: If rebuild fails and a stale snapshot exists, returns the stale snapshot with telemetry increment `"orchestra_dashboard_snapshot_fallback_total"`
+- **Deduplication on persist**: If new payload JSON matches the latest snapshot (by `JSON.stringify`), updates `computedAt` instead of creating a duplicate row
+
+### Test coverage
+- 15 test files, 119+ tests passing after this audit (117 passing before; 2 new dashboard tests added)
+- Dashboard tests cover: snapshot building, attention scoring, staleness/cache, client access denial, job lifecycle, null allocation propagation (new), blocked brain movement label (new)
+
+### Known limitations (confirmed intentional)
+- No cron-based refresh fallback — staleness-based inline rebuild (5-min TTL) plus write-triggered refresh is the intentional model
+- No client-facing dashboard surface — explicitly deferred
+- Org allocation summary capped at 8 members for general dashboard UX brevity
+- `payloadJson` typed as generic `Json` in Prisma schema — type safety enforced only at service layer; no runtime Zod validation on read
+- Hard-coded thresholds (80% watch, 7-day recent window, 14-day brain stale) — intentional, documented in feature4.md §12
+- No member deactivation dashboard refresh trigger — headcount stays stale until next 5-min rebuild or write-triggered refresh
