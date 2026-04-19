@@ -106,7 +106,7 @@ describe("DashboardService", () => {
         changes: { pendingCount: 0, acceptedRecentCount: 0, latestAcceptedAt: null, pendingSummaries: [], recentAccepted: [] },
         decisions: { openCount: 0, latestAcceptedAt: null, openItems: [] },
         attention: { score: 0, label: "healthy", reasons: [] },
-        quickLinks: { dashboardPath: "", brainPath: "", documentsPath: "", docViewerPath: null, docViewerState: null, brainViewerState: { pageContext: "dashboard_project", selectedRefType: "dashboard_scope", selectedRefId: "project-1" } },
+        quickLinks: { dashboardPath: "", brainPath: "", documentsPath: "", docViewerPath: null, docViewerState: null, brainViewerState: { pageContext: "brain_overview", selectedRefType: "dashboard_scope", selectedRefId: "project-1" } },
         recentActivity: { latestAcceptedChangeAt: null, latestDecisionAt: null, latestDocumentProcessedAt: null }
       }
     };
@@ -212,6 +212,7 @@ describe("DashboardService", () => {
     expect(payload.brain.freshnessState).toBe("processing");
     expect(payload.documents.readinessState).toBe("processing");
     expect(payload.teamSummary.workload.label).toBe("watch");
+    expect(payload.quickLinks.brainViewerState.pageContext).toBe("brain_overview");
   });
 
   it("marks refresh dashboard jobs as running then completed", async () => {
@@ -255,5 +256,104 @@ describe("DashboardService", () => {
 
     expect(jobRunUpsert.mock.calls[0][0].update.status).toBe("running");
     expect(jobRunUpsert.mock.calls.at(-1)![0].update.status).toBe("completed");
+  });
+
+  it("builds the general dashboard from active projects only", async () => {
+    const prisma = {
+      dashboardSnapshot: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn(async ({ data }) => ({
+          id: "snap-general-active",
+          computedAt: new Date("2026-04-18T00:00:00.000Z"),
+          payloadJson: data.payloadJson
+        })),
+        update: vi.fn()
+      },
+      organization: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: "org-1",
+          name: "Acme",
+          slug: "acme"
+        })
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: vi.fn().mockResolvedValue([])
+      }
+    } as any;
+
+    const service = new DashboardService(
+      prisma,
+      { ensureProjectAccess: vi.fn(), ensureProjectManager: vi.fn() } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
+    );
+
+    await service.getGeneralDashboard({
+      orgId: "org-1",
+      actorUserId: "user-1",
+      forceRefresh: true
+    });
+
+    expect(prisma.project.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orgId: "org-1", status: "active" }
+      })
+    );
+  });
+
+  it("falls back to the latest stale snapshot when rebuild fails", async () => {
+    const stalePayload = {
+      scope: "general",
+      organization: { id: "org-1", name: "Acme", slug: "acme" },
+      computedAt: "2026-04-01T00:00:00.000Z",
+      summary: {
+        activeProjectCount: 1,
+        orgHeadcount: 2,
+        orgRoleBreakdown: { manager: 1, dev: 1 },
+        projectMemberDistribution: [],
+        overloadedMembers: [],
+        overloadedCount: 0,
+        watchCount: 0,
+        projectsNeedingAttention: [],
+        changePressure: { pendingCount: 0, recentAcceptedCount: 0, openDecisionCount: 0 },
+        brainFreshness: { current: 1, processing: 0, stale: 0, blocked: 0 }
+      },
+      projects: [],
+      quickLinks: { projects: [] }
+    };
+    const staleSnapshot = {
+      id: "snap-stale",
+      computedAt: new Date("2026-04-01T00:00:00.000Z"),
+      payloadJson: stalePayload
+    };
+    const telemetry = { increment: vi.fn(), observeDuration: vi.fn() };
+    const prisma = {
+      dashboardSnapshot: {
+        findFirst: vi.fn().mockResolvedValue(staleSnapshot)
+      },
+      organization: {
+        findUniqueOrThrow: vi.fn().mockRejectedValue(new Error("db down"))
+      }
+    } as any;
+
+    const service = new DashboardService(
+      prisma,
+      { ensureProjectAccess: vi.fn(), ensureProjectManager: vi.fn() } as any,
+      { record: vi.fn() } as any,
+      telemetry as any
+    );
+
+    const payload = await service.getGeneralDashboard({
+      orgId: "org-1",
+      actorUserId: "user-1"
+    });
+
+    expect(payload).toEqual(stalePayload);
+    expect(telemetry.increment).toHaveBeenCalledWith("orchestra_dashboard_snapshot_fallback_total", {
+      scope: "general"
+    });
   });
 });

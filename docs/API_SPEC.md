@@ -817,6 +817,7 @@ Return org-wide dashboard snapshot.
 
 ### Must include
 - active projects summary
+- active project list
 - total team headcount
 - role breakdown
 - project/member distribution
@@ -838,6 +839,12 @@ Return project dashboard snapshot.
 - accepted/pending change pressure
 - quick navigation references
 - optional `forceRefresh=true` query for inline rebuild of the project snapshot
+
+### Current implementation notes
+- manager and assigned dev only
+- clients do not have a public dashboard route yet
+- stale or missing snapshots rebuild inline
+- if inline rebuild fails and an older snapshot exists, the older snapshot is returned instead of failing hard
 
 ---
 

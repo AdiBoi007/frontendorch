@@ -1,126 +1,251 @@
 # Feature 4: Dashboard
 
-## 1. Purpose
-Feature 4 implements Orchestra’s minimal awareness and operating surface. It is a snapshot-backed read model over existing Product Brain, document, change, and membership state. It answers:
+## 1. Feature name and purpose
+Feature 4 is `Dashboard`.
+
+It is Orchestra's minimal awareness and operating surface. It does not create truth. It reads current state from Feature 1, summarizes operational pressure deterministically, and gives managers and assigned developers a fast way to answer:
 
 - what projects exist
 - how people are allocated
 - which projects need attention
-- whether source material and Product Brain truth are fresh
+- whether source material and Product Brain are fresh
 - where to go next in Brain and Docs
 
-Dashboard is not a source of truth. It reflects truth movement from Feature 1, notifies about pressure, and gives quick navigation into Feature 3 and Product Brain.
+## 2. Product role of Feature 4 in Orchestra
+Dashboard is the top-level operating read surface above Product Brain, Live Doc Viewer, and Socrates.
 
-## 2. Product role in Orchestra
-Dashboard is the top-level operating surface for managers and project-scoped awareness surface for assigned devs.
+It exists in two scopes:
 
-- `general` scope: org-wide awareness, manager-only
-- `project` scope: one-project operating snapshot, manager + assigned devs
+- `general`: org-wide awareness for managers
+- `project`: one-project operating summary for managers and assigned devs
 
-It stays intentionally light. There are no BI-heavy charts, no task board behavior, no finance engine, and no HR scheduling engine.
+Feature 4 is intentionally small. It is not a source of truth, not a BI system, and not an HR or scheduling product. It reflects truth movement from Feature 1 and exposes navigation into Feature 3 and the Brain surface.
 
-## 3. Exact scope
+## 3. Exact scope of Feature 4
 Implemented:
 
 - org-wide dashboard snapshot
 - project dashboard snapshot
-- team summary read model
+- project team-summary read model
 - deterministic workload labels
-- deterministic attention labels
-- deterministic Product Brain freshness labels
-- document readiness summary
+- deterministic attention scoring
+- deterministic Product Brain freshness states
+- document readiness summaries
 - quick links into Brain and Docs
-- snapshot refresh job
-- refresh hooks from project/doc/truth/change transitions
-- Socrates-compatible dashboard snapshot retrieval source
+- project and general snapshot refresh logic
+- job-backed refresh path
+- refresh hooks from project, document, Product Brain, and accepted-change transitions
+- Socrates retrieval compatibility for dashboard contexts
 
 Not implemented:
 
-- charts/graphs beyond basic frontend card/list payloads
+- client-facing dashboard surface
+- chart-heavy analytics
 - timesheets or calendar scheduling
-- client-facing dashboard routes
-- separate analytics warehouse
+- finance/accounting reporting
+- workforce planning beyond simple allocation labels
 
-## 4. Core internal objects
+## 4. What Feature 4 is NOT
+Feature 4 is not:
 
-- `dashboard_snapshots`: persisted snapshot rows keyed by `org_id`, `scope`, and optional `project_id`
-- `job_runs`: auditable refresh jobs for dashboard snapshots
-- `project_members`: allocation/workload source
-- `document_versions`: source readiness / processing state source
-- `artifact_versions` (`product_brain` accepted version): current-truth freshness source
-- `spec_change_proposals`: pending and recent accepted change pressure source
-- `decision_records`: open/accepted decision pressure source
+- a source-of-truth system
+- a replacement for Product Brain
+- a task board
+- a delivery control tower
+- a finance dashboard
+- an HR platform
+- a dense analytics/BI layer
+- a place to review or accept changes
 
-## 5. Data model actually used
+If the dashboard becomes chart-heavy, opaque, or operationally noisy, it is wrong.
+
+## 5. User-facing outcomes
+General dashboard lets a manager see:
+
+- active project count
+- active project list
+- org headcount
+- org role mix
+- cross-project allocation pressure
+- which projects need attention first
+- whether the org has stale or blocked Product Brain state
+
+Project dashboard lets a manager or assigned dev see:
+
+- project identity and status
+- current team shape
+- member allocations and workload labels
+- document readiness
+- Product Brain freshness
+- pending or recently accepted change pressure
+- open decision pressure
+- quick launch into Brain and Docs
+
+## 6. Core internal objects
+Feature 4 uses these internal objects:
+
+- `dashboard_snapshots`
+- `job_runs`
+- `projects`
+- `project_members`
+- `documents`
+- `document_versions`
+- `artifact_versions` for accepted `product_brain`
+- `spec_change_proposals`
+- `decision_records`
+- `audit_events`
+
+No separate analytics warehouse or denormalized fact store is introduced.
+
+## 7. Data model used by Feature 4
 
 ### `dashboard_snapshots`
+Persisted snapshot rows.
+
+| Column | Purpose |
+| --- | --- |
+| `id` | Snapshot identity |
+| `org_id` | Owning organization |
+| `project_id` | Nullable for `general`, set for `project` |
+| `scope` | `general` or `project` |
+| `payload_json` | Full read-model payload returned to frontend |
+| `computed_at` | Snapshot computation timestamp |
+
+Indexes used:
+
+- `@@index([orgId, scope, computedAt(sort: Desc)])`
+- `@@index([projectId, scope, computedAt(sort: Desc)])`
+
+### Source data reused
+
+#### `projects`
 - `id`
 - `org_id`
-- `project_id` nullable
-- `scope` = `general | project`
-- `payload_json`
-- `computed_at`
+- `name`
+- `slug`
+- `status`
+- `description`
+- `preview_url`
 
-Indexes:
-- `(org_id, scope, computed_at desc)`
-- `(project_id, scope, computed_at desc)`
+#### `project_members`
+- `project_role`
+- `role_in_project`
+- `allocation_percent`
+- `weekly_capacity_hours`
+- `is_active`
 
-### Source fields reused
+#### `documents`
+- `current_version_id`
+- `visibility`
 
-- `project_members.project_role`
-- `project_members.role_in_project`
-- `project_members.allocation_percent`
-- `project_members.weekly_capacity_hours`
-- `document.current_version_id`
-- `document_versions.status`
-- `document_versions.processed_at`
-- `artifact_versions.artifact_type=product_brain`, `status=accepted`, `accepted_at`
-- `spec_change_proposals.status`, `accepted_at`
-- `decision_records.status`, `accepted_at`
+#### `document_versions`
+- `status`
+- `processed_at`
+- `created_at`
 
-## 6. Public API
+#### `artifact_versions`
+- `artifact_type = product_brain`
+- `status = accepted`
+- `version_number`
+- `accepted_at`
+- `created_at`
+
+#### `spec_change_proposals`
+- `status`
+- `accepted_at`
+- `summary`
+
+#### `decision_records`
+- `status`
+- `accepted_at`
+- `title`
+
+#### `job_runs`
+- refresh lifecycle auditability for `refresh_dashboard_snapshot`
+
+## 8. API routes used by Feature 4
 
 ### `GET /v1/dashboard/general`
-Manager-only. Returns the latest fresh general snapshot or rebuilds inline when missing/stale or when `forceRefresh=true`.
+Manager-only.
+
+Query:
+
+- `forceRefresh?: boolean`
+
+Behavior:
+
+1. validate auth and manager role
+2. load latest general snapshot for the org
+3. if snapshot is fresh and `forceRefresh=false`, return it
+4. otherwise rebuild inline
+5. if rebuild fails and a prior snapshot exists, serve the stale snapshot instead of failing hard
 
 ### `GET /v1/projects/:projectId/dashboard`
-Manager + assigned devs only. Returns the latest fresh project snapshot or rebuilds inline when missing/stale or when `forceRefresh=true`.
+Manager or assigned dev only.
+
+Query:
+
+- `forceRefresh?: boolean`
+
+Behavior mirrors `general`, but is project-scoped.
 
 ### `GET /v1/projects/:projectId/team-summary`
-Manager + assigned devs only. Returns the team-only projection derived from the project dashboard snapshot.
+Manager or assigned dev only.
+
+Returns only the `teamSummary` fragment from the project snapshot.
 
 ### `POST /v1/projects/:projectId/dashboard/refresh`
-Manager-only. Forces a project snapshot rebuild immediately and returns `snapshotId` + `computedAt`.
+Manager-only.
 
-## 7. Snapshot model
+Forces an immediate project snapshot rebuild and returns:
 
-Dashboard is snapshot-backed rather than route-time heavy join backed.
+- `queued`
+- `scope`
+- `snapshotId`
+- `computedAt`
 
-Read path:
-1. Route validates access.
-2. Service loads the latest snapshot for `general` or `project`.
-3. If the snapshot is newer than 5 minutes and no force-refresh was requested, return it.
-4. Otherwise rebuild inline, persist, and return the new payload.
+Public general refresh route is not exposed.
 
-Persist behavior:
-- if the latest snapshot payload is byte-for-byte identical to the newly built payload, the service updates `computed_at` on the existing row instead of creating a duplicate row
-- if the payload changed, a new snapshot row is created
+## 9. Full general-dashboard flow
+Flow:
 
-This keeps repeated refreshes idempotent without turning snapshots into immutable truth artifacts.
+1. Route validates JWT and requires manager role.
+2. `DashboardService.getGeneralDashboard()` is called with `orgId`, `actorUserId`, and `forceRefresh`.
+3. Service reads latest `dashboard_snapshots` row for `scope=general` and `project_id IS NULL`.
+4. If snapshot age is <= 5 minutes and `forceRefresh=false`, return cached payload.
+5. Otherwise service rebuilds from live source tables:
+   - active projects only
+   - active users in org
+   - active project members
+   - document readiness per project
+   - latest accepted Product Brain per project
+   - pending/recent accepted change proposals
+   - open/accepted decisions
+6. Service computes project cards, org-wide allocation summary, pressure summary, and freshness counts.
+7. Snapshot is persisted:
+   - if payload is unchanged, only `computed_at` is updated
+   - if payload changed, a new snapshot row is inserted
+8. Audit event `dashboard_general_opened` is written.
+9. Telemetry counters/histograms are emitted.
 
-## 8. General dashboard payload
-
-Top-level shape:
+Returned general payload:
 
 ```json
 {
   "scope": "general",
-  "organization": { "id": "...", "name": "...", "slug": "..." },
-  "computedAt": "ISO timestamp",
+  "organization": {
+    "id": "uuid",
+    "name": "Acme Studio",
+    "slug": "acme-studio"
+  },
+  "computedAt": "2026-04-19T01:02:03.000Z",
   "summary": {
     "activeProjectCount": 3,
-    "orgHeadcount": 7,
-    "orgRoleBreakdown": { "manager": 2, "dev": 5 },
+    "orgHeadcount": 9,
+    "orgRoleBreakdown": {
+      "manager": 2,
+      "dev": 7
+    },
     "projectMemberDistribution": [],
     "overloadedMembers": [],
     "overloadedCount": 1,
@@ -134,34 +259,61 @@ Top-level shape:
     "brainFreshness": {
       "current": 1,
       "processing": 1,
-      "stale": 0,
-      "blocked": 1
+      "stale": 1,
+      "blocked": 0
     }
   },
   "projects": [],
-  "quickLinks": { "projects": [] }
+  "quickLinks": {
+    "projects": []
+  }
 }
 ```
 
-Each project card includes:
-- headcount and role breakdown
-- workload summary
-- doc readiness summary
-- Product Brain freshness summary
-- change + decision pressure
-- deterministic attention bucket
-- movement label `fast | steady | slow`
-- quick links
+## 10. Full project-dashboard flow
+Flow:
 
-## 9. Project dashboard payload
+1. Route validates JWT.
+2. `ProjectService.ensureProjectAccess()` verifies membership.
+3. `DashboardService.assertProjectDashboardRole()` denies clients.
+4. Service loads latest project snapshot.
+5. If fresh, return it. If stale/missing, rebuild inline. If rebuild fails and an older snapshot exists, return the older snapshot.
+6. Project rebuild reads:
+   - project metadata
+   - active members
+   - documents and their current/latest versions
+   - accepted Product Brain artifact
+   - pending/recent accepted change proposals
+   - open/accepted decisions
+7. Service computes:
+   - `teamSummary`
+   - `documents`
+   - `brain`
+   - `changes`
+   - `decisions`
+   - `attention`
+   - `quickLinks`
+   - `recentActivity`
+8. Snapshot is persisted with the same duplicate-suppression rules as general.
+9. Audit event `dashboard_project_opened` is written.
 
-Top-level shape:
+Returned project payload:
 
 ```json
 {
   "scope": "project",
-  "computedAt": "ISO timestamp",
-  "project": {},
+  "computedAt": "2026-04-19T01:02:03.000Z",
+  "project": {
+    "id": "uuid",
+    "orgId": "uuid",
+    "name": "Apollo",
+    "slug": "apollo",
+    "status": "active",
+    "description": "Client delivery project",
+    "previewUrl": null,
+    "memberCount": 4,
+    "documentCount": 3
+  },
   "teamSummary": {},
   "documents": {},
   "brain": {},
@@ -173,188 +325,390 @@ Top-level shape:
 }
 ```
 
-It intentionally stays card-friendly:
-- no raw joins dumped to the frontend
-- no per-chunk evidence details
-- enough data to route the user into Brain or Docs quickly
+## 11. Snapshot/read-model architecture
+Dashboard is snapshot-backed, not request-join-heavy.
 
-## 10. Workload model
+### Read path
+- find latest snapshot by `(orgId, scope)` or `(orgId, projectId, scope)`
+- use snapshot if age <= `SNAPSHOT_STALE_MS` and not forced
+- otherwise rebuild inline and persist
 
-Per-member workload label derives only from `allocation_percent`:
+### Rebuild path
+- aggregate from current source tables
+- compute deterministic read model
+- persist snapshot
 
-- `overloaded`: `> 100`
-- `watch`: `>= 80`
-- `normal`: `< 80`
-- `unknown`: `null`
+### Duplicate behavior
+- identical payloads do not create duplicate rows
+- service updates `computed_at` on the latest row instead
 
-Project team workload summary:
-- `attention` if any member is overloaded
-- `watch` if no overload but at least one member is in watch
-- `unknown` if every member has unknown allocation
+### Fallback behavior
+- if rebuild fails and an earlier snapshot exists, service returns the earlier snapshot
+- fallback is instrumented through telemetry
+- if no prior snapshot exists, error is returned
+
+### Freshness metadata
+- every payload includes top-level `computedAt`
+- snapshot staleness is inferred from `computedAt` + client-side time if needed
+
+## 12. Pressure / attention scoring model
+Attention is deterministic and explainable.
+
+Inputs:
+
+- failed documents
+- processing/pending documents
+- pending change proposals
+- open decisions
+- overloaded members
+- watch members
+- no ready source documents
+- Product Brain freshness state
+
+Scoring rules in `buildAttention()`:
+
+- failed docs: `+4`
+- processing docs: `+2`
+- pending changes: `+1` each, capped at `+4`
+- open decisions: `+1` each, capped at `+3`
+- overloaded members: `+2` each, capped at `+4`
+- watch members when no overloads: `+1` each, capped at `+2`
+- no ready source docs with non-zero total docs: `+3`
+- Product Brain `blocked`: `+4`
+- Product Brain `stale`: `+3`
+- Product Brain `processing`: `+1`
+
+Output:
+
+- `score`
+- `label`
+- `reasons[]`
+
+Label thresholds:
+
+- `attention` if `score >= 7`
+- `watch` if `score >= 3`
 - `healthy` otherwise
 
-Org-level overloaded members are computed by summing active project allocations per user across projects.
+This is intentionally not machine learned.
 
-## 11. Document readiness model
+## 13. Freshness model
+Brain freshness is computed in `buildBrainFreshness()`.
 
-Per-project document readiness is computed from the effective current version for each document:
-- use `document.current_version_id` when available
-- otherwise use the latest document version
+States:
 
-Counts tracked:
+- `blocked`
+- `processing`
+- `stale`
+- `current`
+
+Rules:
+
+1. if no accepted brain and no docs, `blocked`
+2. if no accepted brain and no ready/partial docs, `blocked`
+3. if any docs are pending/processing, `processing`
+4. if no accepted brain but usable docs exist, `blocked`
+5. if latest ready/partial document processing time is newer than the accepted Product Brain timestamp, `stale`
+6. if accepted change or accepted decision is newer than the accepted Product Brain timestamp, `stale`
+7. if accepted Product Brain is older than 14 days, `stale`
+8. otherwise `current`
+
+`acceptedAt` uses `artifact.acceptedAt` when available, otherwise `artifact.createdAt`.
+
+## 14. Document readiness model
+Document readiness is computed per project in `buildDocumentReadiness()`.
+
+For each document:
+
+- use `document.currentVersionId` when present
+- otherwise fall back to the latest version
+
+Tracked counts:
+
 - `pending`
 - `processing`
 - `ready`
 - `partial`
 - `failed`
 
-Readiness state:
-- `empty`: no documents
+Derived readiness states:
+
+- `empty`: zero documents
 - `blocked`: failed docs and no ready/partial docs
 - `processing`: any pending/processing docs
-- `watch`: some failed docs but there is still ready/partial coverage
-- `ready`: no blocking or in-flight doc work
+- `watch`: there are failed docs but at least one ready/partial doc exists
+- `ready`: no failures and nothing in flight
 
-## 12. Product Brain freshness model
+`latestProcessedAt` is the max `processedAt` of effective document versions.
 
-Dashboard does not invent freshness. It derives it from:
-- latest accepted `product_brain`
-- latest processed document version time
-- latest accepted change time
-- latest accepted decision time
+## 15. Role filtering / authorization model
 
-Freshness states:
-- `blocked`: no accepted brain and no usable source readiness
-- `processing`: document processing is in flight
-- `stale`: accepted truth exists but newer docs/accepted changes/accepted decisions exist, or brain age exceeds 14 days
-- `current`: none of the stale/blocked/processing conditions apply
+### General dashboard
+- manager only
+- enforced in route with `requireManager(request)`
 
-## 13. Attention model
+### Project dashboard
+- manager or assigned dev only
+- enforced by `ensureProjectAccess()` and `assertProjectDashboardRole()`
 
-Attention is deterministic, additive, and explainable.
+### Clients
+- clients are denied from all dashboard routes in the current implementation
+- there is no client-safe dashboard projection route yet
 
-Inputs:
-- failed documents
-- processing documents
-- pending changes
-- open decisions
-- overloaded/watch members
-- no ready source docs
-- Product Brain freshness state
+### Server-side only
+All role enforcement is backend-side. There is no trust in frontend-only hiding.
 
-Output:
-- numeric `score`
-- bucket `healthy | watch | attention`
-- human-readable `reasons[]`
+## 16. Interaction with Feature 1
+Dashboard consumes Feature 1 state directly:
 
-This is intentionally not an ML model.
+- documents and document versions for readiness
+- accepted `product_brain` artifact version for freshness
+- change proposals and decisions for pressure
+- project membership for headcount and allocations
 
-## 14. Refresh / invalidation
+Refresh hooks already exist in Feature 1 mutation paths:
 
-Job name:
-- `refresh_dashboard_snapshot`
-
-Refresh helper:
-- `src/lib/dashboard/refresh.ts`
-
-Triggered from:
 - project creation
 - document upload
-- document reprocess
-- successful parse/chunk/embed completion to ready state
-- parse failure / partial state changes
-- product brain accepted version generation
-- change proposal create / accept / reject
-- accepted change application
+- document reprocess / processing state transitions
+- accepted Product Brain generation
+- accepted/rejected change proposal transitions
 
-Behavior:
-- enqueue both project + general refresh for project-scoped state changes
-- use `job_runs` for auditable pending/running/completed tracking
-- real worker mode and inline mode both supported
+Dashboard does not mutate Product Brain or source evidence.
 
-## 15. Feature interaction
+## 17. Interaction with Feature 2
+Dashboard snapshots are retrievable by Socrates.
 
-### Feature 1
-Dashboard reads:
-- project membership and allocations
-- document version readiness
-- accepted Product Brain artifact version
-- change proposals and decisions
+`hybridRetrieve()` treats dashboard as its own retrieval source:
 
-It does not mutate Product Brain or documents.
+- `pageContext = dashboard_general` -> retrieve latest general snapshot
+- `pageContext = dashboard_project` -> retrieve latest project snapshot
 
-### Feature 2
-Dashboard snapshots are retrieval candidates for Socrates via `dashboard_snapshot`.
+Dashboard facts are therefore usable in dashboard-context Socrates answers without forcing Socrates to recompute dashboard joins itself.
 
-`hybrid.ts` now chooses:
-- general dashboard snapshot for `dashboard_general`
-- project dashboard snapshot for `dashboard_project`
+Dashboard quick links also include Socrates-compatible viewer-state hints:
 
-### Feature 3
-Dashboard quick links return Brain and Doc paths plus viewer-state hints so the frontend can launch directly into:
-- `/projects/:projectId/brain/current`
-- `/projects/:projectId/documents`
-- `/projects/:projectId/documents/:documentId/view`
+- `docViewerState` uses `pageContext: "doc_viewer"`
+- `brainViewerState` uses `pageContext: "brain_overview"` and `selectedRefType: "dashboard_scope"`
 
-## 16. Role and security rules
+## 18. Interaction with Feature 3
+Dashboard quick links are designed to open Feature 3 and Brain surfaces safely:
 
-- general dashboard: manager only
-- project dashboard: manager + assigned devs
-- clients are explicitly rejected from dashboard routes
-- all filtering is server-side
-- no client-safe dashboard projection exists yet
+- `dashboardPath`
+- `brainPath`
+- `documentsPath`
+- `docViewerPath`
+- `docViewerState`
 
-## 17. Jobs and workers
+`docViewerPath` points at the newest document in the project list order if one exists.
 
-Added:
+Document readiness counts are computed from real `documents` and `document_versions`, so Feature 3's actual viewable document state and Dashboard's readiness cards stay aligned.
+
+## 19. Jobs and refresh/invalidation rules
+
+### Job name
 - `refresh_dashboard_snapshot`
 
-Inline mode:
-- handled in `src/setup-context.ts`
+### Enqueue helper
+- `src/lib/dashboard/refresh.ts`
 
-BullMQ worker mode:
-- handled in `src/worker.ts`
+### Job payload
 
-## 18. Implementation map
+```json
+{
+  "scope": "general | project",
+  "orgId": "uuid",
+  "projectId": "uuid | null",
+  "reason": "string",
+  "idempotencyKey": "string"
+}
+```
 
+### Idempotency
+- queue key built from `scope`, target id, reason, and minute bucket
+- `job_runs` is upserted on enqueue and on execution
+- duplicate refreshes for the same target/reason/window collapse naturally
+
+### Execution
+- inline mode: `setup-context.ts`
+- worker mode: `worker.ts`
+
+### Status lifecycle
+- enqueue: `pending`
+- job start: `running`
+- success: `completed`
+- failure: `failed`
+
+### Refresh triggers currently wired
+- project created
+- document uploaded
+- document processing lifecycle changes
+- accepted Product Brain generation
+- change proposal create/accept/reject
+- accepted change application
+
+There is no separate cron-based fallback job in the current implementation. Staleness-based inline rebuild is the fallback.
+
+## 20. Tech stack used
+- Node.js
+- TypeScript
+- Fastify
+- Prisma
+- PostgreSQL
+- Redis
+- BullMQ
+- structured JSON snapshots in PostgreSQL
+
+## 21. Libraries/packages/services used
+- `@prisma/client`
+- Fastify route registration and auth middleware
+- Zod for route query/param validation
+- internal `AuditService`
+- internal `ProjectService`
+- internal telemetry service
+- internal job dispatcher abstraction
+
+## 22. Validation and security rules
+- all routes require auth
+- general dashboard requires manager role
+- project dashboard requires project membership
+- clients are blocked from dashboard routes
+- route inputs are validated with Zod:
+  - `projectId` must be UUID
+  - `forceRefresh` is boolean-coerced
+- snapshot refresh job requires `projectId` for project scope
+- org/project scoping is always enforced server-side
+
+## 23. Error handling and edge cases
+
+### Snapshot missing
+- service rebuilds inline
+
+### Snapshot stale
+- service rebuilds inline unless fresh enough
+
+### Snapshot rebuild fails with older snapshot available
+- service returns older snapshot instead of failing hard
+- fallback is tracked with telemetry
+
+### Snapshot rebuild fails with no older snapshot
+- request fails
+
+### No Product Brain and no usable docs
+- brain freshness becomes `blocked`
+
+### Pending docs after accepted brain
+- brain freshness becomes `processing`
+
+### Failed docs with no ready docs
+- document readiness becomes `blocked`
+
+### Null allocations
+- workload label becomes `unknown`
+
+### Repeated identical snapshot rebuild
+- latest snapshot row `computed_at` is updated instead of creating a duplicate row
+
+## 24. Testing strategy
+Current tests cover:
+
+- general dashboard snapshot build
+- project dashboard snapshot build
+- blocked/processing freshness states
+- attention from failed docs, pending changes, open decisions, and overload
+- active-project-only aggregation semantics
+- stale snapshot fallback behavior
+- manager-only general dashboard route
+- manager/dev project dashboard route behavior
+- manager-only refresh route
+- team-summary route
+- refresh job lifecycle
+
+Primary files:
+
+- `tests/dashboard-service.test.ts`
+- `tests/routes.test.ts`
+
+The tests are mostly service-level and route-contract level. They validate deterministic aggregation logic and role enforcement without needing full infra-backed integration.
+
+## 25. Production-readiness notes
+Production-ready at the application layer:
+
+- snapshot-backed dashboard reads
+- deterministic freshness and pressure logic
+- auditable refresh jobs
+- stale-snapshot fallback on rebuild failure
+- server-side role enforcement
+- Socrates retrieval compatibility
+
+Still not included in this feature:
+
+- live infra-backed staging validation against real Postgres/Redis
+- client-safe dashboard route
+- periodic scheduled recompute beyond stale-on-read + write-triggered refresh
+- advanced observability exporters beyond current audit + telemetry hooks
+
+## 26. How the feature was actually implemented in this repo
+Implementation centers on `DashboardService`.
+
+Main methods:
+
+- `getGeneralDashboard()`
+- `getProjectDashboard()`
+- `getProjectTeamSummary()`
+- `refreshProjectDashboard()`
+- `refreshSnapshotJob()`
+
+Important helpers:
+
+- `buildGeneralDashboardPayload()`
+- `buildProjectDashboardPayload()`
+- `buildProjectCard()`
+- `buildTeamSummary()`
+- `buildDocumentReadiness()`
+- `buildBrainFreshness()`
+- `buildChangeSummary()`
+- `buildDecisionSummary()`
+- `buildAttention()`
+- `buildOrgAllocationSummary()`
+- `buildProjectQuickLinks()`
+
+The service persists snapshots directly into `dashboard_snapshots`, uses `job_runs` for refresh auditability, records dashboard-open audit events, and emits telemetry for cache hits, rebuilds, fallbacks, request durations, and snapshot build durations.
+
+## 27. File/module map of the implementation
+
+### Core feature files
 - `src/modules/dashboard/service.ts`
 - `src/modules/dashboard/routes.ts`
 - `src/modules/dashboard/schemas.ts`
 - `src/lib/dashboard/refresh.ts`
+
+### Wiring
 - `src/app/build-app.ts`
 - `src/setup-context.ts`
 - `src/worker.ts`
 - `src/lib/jobs/types.ts`
 - `src/lib/jobs/keys.ts`
+
+### Data model
 - `prisma/schema.prisma`
 - `prisma/migrations/0007_dashboard_snapshot_project_index/migration.sql`
 
-## 19. Tests
-
-Added/updated:
+### Tests
 - `tests/dashboard-service.test.ts`
 - `tests/routes.test.ts`
 
-Coverage now includes:
-- general snapshot build
-- project snapshot build
-- attention / freshness derivation
-- route-level role enforcement
-- team summary route
-- manager-only refresh route
+### Upstream integration points
+- `src/modules/projects/service.ts`
+- `src/modules/documents/service.ts`
+- `src/modules/brain/service.ts`
+- `src/modules/changes/service.ts`
+- `src/lib/retrieval/hybrid.ts`
 
-## 20. Production notes
-
-What is production-ready at the application layer:
-- snapshot-backed reads
-- deterministic scoring/freshness
-- auditable refresh jobs
-- integration with Product Brain and Socrates
-- stable frontend-friendly payloads
-
-Still intentionally deferred:
-- client-facing dashboard summary routes
-- chart-heavy analytics
-- calendar/scheduling
-- financial reporting
-- infra-backed staging validation against live Postgres/Redis
+## 28. Known limitations / intentionally deferred items
+- no client-safe dashboard route yet
+- no chart-heavy analytics
+- no calendar/scheduling engine
+- no project financials
+- no scheduled background recompute loop beyond mutation-triggered refresh + stale-on-read rebuild
+- no infra-backed end-to-end staging validation in this repo

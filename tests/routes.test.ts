@@ -134,7 +134,7 @@ function createContext() {
       changes: { pendingCount: 0, acceptedRecentCount: 0, latestAcceptedAt: null, pendingSummaries: [], recentAccepted: [] },
       decisions: { openCount: 0, latestAcceptedAt: null, openItems: [] },
       attention: { score: 0, label: "healthy", reasons: [] },
-      quickLinks: { dashboardPath: "/projects/project-1/dashboard", brainPath: "/projects/project-1/brain/current", documentsPath: "/projects/project-1/documents", docViewerPath: null, docViewerState: null, brainViewerState: { pageContext: "dashboard_project", selectedRefType: "dashboard_scope", selectedRefId: "project-1" } },
+      quickLinks: { dashboardPath: "/projects/project-1/dashboard", brainPath: "/projects/project-1/brain/current", documentsPath: "/projects/project-1/documents", docViewerPath: null, docViewerState: null, brainViewerState: { pageContext: "brain_overview", selectedRefType: "dashboard_scope", selectedRefId: "project-1" } },
       recentActivity: { latestAcceptedChangeAt: null, latestDecisionAt: null, latestDocumentProcessedAt: null }
     })),
     getProjectTeamSummary: vi.fn(async () => ({

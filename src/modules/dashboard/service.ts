@@ -94,7 +94,7 @@ type ProjectQuickLinks = {
   documentsPath: string;
   docViewerPath: string | null;
   docViewerState: { pageContext: "doc_viewer"; selectedRefType: "document"; selectedRefId: string } | null;
-  brainViewerState: { pageContext: "dashboard_project"; selectedRefType: "dashboard_scope"; selectedRefId: string };
+  brainViewerState: { pageContext: "brain_overview"; selectedRefType: "dashboard_scope"; selectedRefId: string };
 };
 
 type ProjectCard = {
@@ -326,10 +326,22 @@ export class DashboardService {
     });
 
     if (!forceRefresh && latest && !this.isSnapshotStale(latest.computedAt)) {
+      this.telemetry.increment("orchestra_dashboard_snapshot_cache_hits_total", { scope: "general" });
       return { snapshot: latest, data: latest.payloadJson as GeneralDashboardPayload };
     }
 
-    return this.buildAndPersistGeneralSnapshot(orgId);
+    this.telemetry.increment("orchestra_dashboard_snapshot_rebuilds_total", { scope: "general" });
+
+    try {
+      return await this.buildAndPersistGeneralSnapshot(orgId);
+    } catch (error) {
+      if (!latest) {
+        throw error;
+      }
+
+      this.telemetry.increment("orchestra_dashboard_snapshot_fallback_total", { scope: "general" });
+      return { snapshot: latest, data: latest.payloadJson as GeneralDashboardPayload };
+    }
   }
 
   private async getOrBuildProjectSnapshot(projectId: string, forceRefresh: boolean) {
@@ -347,10 +359,22 @@ export class DashboardService {
     });
 
     if (!forceRefresh && latest && !this.isSnapshotStale(latest.computedAt)) {
+      this.telemetry.increment("orchestra_dashboard_snapshot_cache_hits_total", { scope: "project" });
       return { snapshot: latest, data: latest.payloadJson as ProjectDashboardPayload };
     }
 
-    return this.buildAndPersistProjectSnapshot(projectId);
+    this.telemetry.increment("orchestra_dashboard_snapshot_rebuilds_total", { scope: "project" });
+
+    try {
+      return await this.buildAndPersistProjectSnapshot(projectId);
+    } catch (error) {
+      if (!latest) {
+        throw error;
+      }
+
+      this.telemetry.increment("orchestra_dashboard_snapshot_fallback_total", { scope: "project" });
+      return { snapshot: latest, data: latest.payloadJson as ProjectDashboardPayload };
+    }
   }
 
   private async buildAndPersistGeneralSnapshot(orgId: string) {
@@ -412,8 +436,8 @@ export class DashboardService {
         select: { id: true, displayName: true, workspaceRoleDefault: true }
       }),
       this.prisma.project.findMany({
-        where: { orgId, status: { in: ["active", "paused"] } },
-        orderBy: { createdAt: "desc" },
+        where: { orgId, status: "active" },
+        orderBy: [{ createdAt: "desc" }],
         include: {
           members: {
             where: { isActive: true },
@@ -457,10 +481,11 @@ export class DashboardService {
       return accumulator;
     }, {});
 
-    const projectCards = projects.map((project) => this.buildProjectCard(project));
+    const projectCards = projects
+      .map((project) => this.buildProjectCard(project))
+      .sort((left, right) => right.attention.score - left.attention.score || left.name.localeCompare(right.name));
     const attentionProjects = projectCards
       .filter((project) => project.attention.label !== "healthy")
-      .sort((left, right) => right.attention.score - left.attention.score)
       .slice(0, 5);
     const allocationSummary = this.buildOrgAllocationSummary(projects);
     const freshnessSummary = projectCards.reduce<Record<BrainFreshnessState, number>>(
@@ -479,11 +504,13 @@ export class DashboardService {
         activeProjectCount: projectCards.length,
         orgHeadcount: users.length,
         orgRoleBreakdown: roleBreakdown,
-        projectMemberDistribution: projectCards.map((project) => ({
-          projectId: project.projectId,
-          name: project.name,
-          memberCount: project.team.headcount
-        })),
+        projectMemberDistribution: projectCards
+          .map((project) => ({
+            projectId: project.projectId,
+            name: project.name,
+            memberCount: project.team.headcount
+          }))
+          .sort((left, right) => right.memberCount - left.memberCount || left.name.localeCompare(right.name)),
         overloadedMembers: allocationSummary.members,
         overloadedCount: allocationSummary.members.filter((member) => member.workloadLabel === "overloaded").length,
         watchCount: allocationSummary.members.filter((member) => member.workloadLabel === "watch").length,
@@ -884,7 +911,7 @@ export class DashboardService {
           }
         : null,
       brainViewerState: {
-        pageContext: "dashboard_project",
+        pageContext: "brain_overview",
         selectedRefType: "dashboard_scope",
         selectedRefId: projectId
       }

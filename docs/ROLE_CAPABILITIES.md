@@ -88,8 +88,8 @@ A user may have:
 | Capability | Manager | Dev | Client |
 |---|---:|---:|---:|
 | View general dashboard | Yes | No | No |
-| View project dashboard | Yes | Yes (assigned projects only) | Limited shared-only |
-| View team headcount and role breakdown | Yes | Yes (project-scoped only) | Limited summary only |
+| View project dashboard | Yes | Yes (assigned projects only) | Not currently shipped |
+| View team headcount and role breakdown | Yes | Yes (project-scoped only) | Not currently shipped |
 | View workload/pressure indicators | Yes | Yes (project-scoped only) | No |
 | View internal change pressure | Yes | Yes | No |
 | Trigger snapshot refresh | Yes | No | No |
@@ -97,7 +97,7 @@ A user may have:
 ### Notes
 - General dashboard is manager-only.
 - Devs can see project-level dashboard data only for projects they belong to.
-- Client gets only explicitly shared summary data.
+- Client-safe dashboard projections are intentionally deferred in the current implementation.
 
 ---
 
@@ -249,7 +249,7 @@ A user may have:
 
 ## 6.11 /v1/projects/:projectId/dashboard
 - manager/dev project members
-- client via filtered client projection only if included in client surface
+- no client route in the current implementation
 
 ## 6.12 /v1/client/:token/*
 - public-token authenticated only
