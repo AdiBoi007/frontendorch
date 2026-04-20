@@ -484,23 +484,41 @@ Maps graph nodes to document sections.
 
 ## 8.1 communication_connectors
 
-Project-scoped external platform connections.
+Project-scoped provider-agnostic communication connectors.
 
 ### Columns
 - `id` UUID PK
 - `project_id` UUID FK → projects.id
-- `provider` enum: `slack | gmail | whatsapp_business`
+- `provider` enum:
+  - `manual_import`
+  - `slack`
+  - `gmail`
+  - `outlook`
+  - `microsoft_teams`
+  - `whatsapp_business`
 - `account_label` text
-- `status` enum: `connected | syncing | error | revoked`
-- `credentials_ref` text
+- `status` enum:
+  - `pending_auth`
+  - `connected`
+  - `syncing`
+  - `error`
+  - `revoked`
+- `credentials_ref` text nullable
 - `config_json` jsonb nullable
+- `provider_cursor_json` jsonb nullable
 - `last_synced_at` timestamptz nullable
+- `last_error` text nullable
 - `created_by` UUID FK → users.id
 - `created_at` timestamptz
 - `updated_at` timestamptz
 
+### Constraints
+- unique `(project_id, provider)`
+
 ### Notes
-- `credentials_ref` should point to a secret store or encrypted credential envelope, not raw tokens.
+- `manual_import` is the only fully implemented provider in C1.
+- `credentials_ref` points to a credential-vault reference, not plaintext tokens.
+- C1 intentionally uses one connector per project per provider.
 
 ---
 
@@ -511,16 +529,77 @@ Tracks sync/backfill/webhook processing windows.
 ### Columns
 - `id` UUID PK
 - `connector_id` UUID FK → communication_connectors.id
+- `project_id` UUID FK → projects.id
+- `provider` enum matching connector provider
+- `sync_type` enum:
+  - `manual`
+  - `webhook`
+  - `backfill`
+  - `incremental`
 - `status` enum: `queued | running | completed | partial | failed`
+- `cursor_before_json` jsonb nullable
+- `cursor_after_json` jsonb nullable
 - `started_at` timestamptz nullable
 - `finished_at` timestamptz nullable
 - `summary_json` jsonb nullable
 - `error_message` text nullable
 - `created_at` timestamptz
 
+### Notes
+- Sync runs are auditable and idempotency-keyed through `job_runs`.
+- In C1, `manual_import` sync is a no-op/provider-summary path; real provider adapters are stubs.
+
 ---
 
-## 8.3 communication_threads
+## 8.3 oauth_states
+
+One-time OAuth state records for future provider connect flows.
+
+### Columns
+- `id` UUID PK
+- `org_id` UUID FK → organizations.id
+- `project_id` UUID FK → projects.id
+- `provider` enum matching `communication_connectors.provider`
+- `actor_user_id` UUID FK → users.id
+- `nonce_hash` text unique
+- `redirect_after` text nullable
+- `expires_at` timestamptz
+- `used_at` timestamptz nullable
+- `created_at` timestamptz
+
+### Notes
+- C1 persists the future-safe model now even though OAuth callback flows are not implemented yet.
+
+---
+
+## 8.4 provider_webhook_events
+
+Deduplicated inbound webhook event log for future real providers.
+
+### Columns
+- `id` UUID PK
+- `provider` enum matching `communication_connectors.provider`
+- `provider_event_id` text
+- `connector_id` UUID nullable FK → communication_connectors.id
+- `project_id` UUID nullable FK → projects.id
+- `event_type` text
+- `raw_payload_hash` text
+- `status` enum:
+  - `received`
+  - `ignored_duplicate`
+  - `queued`
+  - `processed`
+  - `failed`
+- `received_at` timestamptz
+- `processed_at` timestamptz nullable
+- `created_at` timestamptz
+
+### Constraints
+- unique `(provider, provider_event_id)`
+
+---
+
+## 8.5 communication_threads
 
 Normalized provider-agnostic threads/conversations.
 
@@ -528,35 +607,49 @@ Normalized provider-agnostic threads/conversations.
 - `id` UUID PK
 - `project_id` UUID FK → projects.id
 - `connector_id` UUID FK → communication_connectors.id
+- `provider` enum matching connector provider
 - `provider_thread_id` text
 - `subject` text nullable
+- `normalized_subject` text nullable
 - `participants_json` jsonb
 - `started_at` timestamptz nullable
 - `last_message_at` timestamptz nullable
+- `thread_url` text nullable
+- `raw_metadata_json` jsonb nullable
 - `created_at` timestamptz
 - `updated_at` timestamptz
 
 ### Constraints
 - unique `(connector_id, provider_thread_id)`
 
+### Notes
+- `provider` is stored explicitly on the thread for retrieval/read-model efficiency.
+- `message_type` is never used to encode provider identity.
+
 ---
 
-## 8.4 communication_messages
+## 8.6 communication_messages
 
-Immutable normalized messages.
+Immutable normalized source messages with revision-aware updates.
 
 ### Columns
 - `id` UUID PK
 - `project_id` UUID FK → projects.id
 - `connector_id` UUID FK → communication_connectors.id
 - `thread_id` UUID FK → communication_threads.id
+- `provider` enum matching connector provider
 - `provider_message_id` text
+- `provider_permalink` text nullable
 - `sender_label` text
 - `sender_external_ref` text nullable
+- `sender_email` text nullable
 - `sent_at` timestamptz
 - `body_text` text
 - `body_html` text nullable
+- `body_hash` text
 - `message_type` enum: `user | system | bot | file_share | note | other`
+- `is_edited` boolean
+- `is_deleted_by_provider` boolean
 - `reply_to_message_id` UUID nullable FK → communication_messages.id
 - `raw_metadata_json` jsonb nullable
 - `created_at` timestamptz
@@ -565,21 +658,86 @@ Immutable normalized messages.
 - unique `(connector_id, provider_message_id)`
 
 ### Notes
-- Never mutate message text after ingest.
-- If the provider supports message edits, model them separately or update metadata while preserving original normalized content and edit markers.
+- A later import/sync may update the canonical current message row, but the prior body must be preserved in `communication_message_revisions`.
+- `body_hash` drives idempotency and re-index behavior.
 
 ---
 
-## 8.5 message_chunks
+## 8.7 communication_message_revisions
+
+Preserved pre-edit message bodies for immutable evidence history.
+
+### Columns
+- `id` UUID PK
+- `message_id` UUID FK → communication_messages.id
+- `project_id` UUID FK → projects.id
+- `connector_id` UUID FK → communication_connectors.id
+- `provider` enum matching connector provider
+- `revision_index` integer
+- `body_text` text
+- `body_html` text nullable
+- `body_hash` text
+- `raw_metadata_json` jsonb nullable
+- `edited_at` timestamptz nullable
+- `created_at` timestamptz
+
+### Constraints
+- unique `(message_id, revision_index)`
+
+### Notes
+- C1 creates a revision only when imported body text/html changes.
+
+---
+
+## 8.8 communication_attachments
+
+Attachment metadata associated with normalized messages.
+
+### Columns
+- `id` UUID PK
+- `message_id` UUID FK → communication_messages.id
+- `project_id` UUID FK → projects.id
+- `connector_id` UUID FK → communication_connectors.id
+- `provider` enum matching connector provider
+- `provider_attachment_id` text
+- `filename` text nullable
+- `mime_type` text nullable
+- `file_size` bigint nullable
+- `provider_url` text nullable
+- `storage_status` enum:
+  - `metadata_only`
+  - `stored`
+  - `extraction_pending`
+  - `extracted`
+  - `failed`
+- `file_key` text nullable
+- `extraction_text` text nullable
+- `raw_metadata_json` jsonb nullable
+- `created_at` timestamptz
+
+### Constraints
+- unique `(message_id, provider_attachment_id)`
+
+### Notes
+- C1 stores metadata only. Attachment extraction/storage is deferred.
+
+---
+
+## 8.9 communication_message_chunks
 
 Retrieval units for communication.
 
 ### Columns
 - `id` UUID PK
 - `message_id` UUID FK → communication_messages.id
+- `thread_id` UUID FK → communication_threads.id
 - `project_id` UUID FK → projects.id
+- `connector_id` UUID FK → communication_connectors.id
+- `provider` enum matching connector provider
 - `chunk_index` integer
 - `content` text
+- `contextual_content` text nullable
+- `lexical_content` text
 - `embedding` vector nullable
 - `token_count` integer
 - `metadata_json` jsonb nullable
@@ -587,6 +745,10 @@ Retrieval units for communication.
 
 ### Constraints
 - unique `(message_id, chunk_index)`
+
+### Notes
+- Chunks are provider-aware and retrieval-ready.
+- C1 builds contextual content from sender, thread subject, timestamp, and attachment names.
 
 ---
 
@@ -889,7 +1051,8 @@ Async job control plane.
 - `generate_brain_graph`
 - `generate_product_brain`
 - `sync_communication_connector`
-- `classify_message_insights`
+- `ingest_communication_batch`
+- `index_communication_message`
 - `precompute_socrates_suggestions`
 - `refresh_dashboard_snapshot`
 

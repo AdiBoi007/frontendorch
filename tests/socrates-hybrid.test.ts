@@ -139,10 +139,15 @@ describe("hybridRetrieve", () => {
           {
             id: "message-1",
             projectId: "project-1",
+            connectorId: "connector-1",
+            provider: "manual_import",
             threadId: "thread-1",
             senderLabel: "Founder",
+            senderEmail: "founder@example.com",
             bodyText: "We should launch with a lightweight voice note input for early idea capture.",
-            thread: { subject: "Kickoff" }
+            bodyHtml: null,
+            thread: { subject: "Kickoff", participantsJson: [] },
+            attachments: []
           }
         ])
       },
@@ -188,7 +193,14 @@ describe("hybridRetrieve", () => {
       commWeight: 0.8
     });
 
-    expect(communicationMessageChunk.create).toHaveBeenCalled();
+    expect(communicationMessageChunk.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          connectorId: "connector-1",
+          provider: "manual_import"
+        })
+      })
+    );
     expect(embedProvider.embedText).toHaveBeenCalled();
     expect(result[0]).toMatchObject({
       id: "message-1",

@@ -13,6 +13,7 @@ import type { ChangeProposalService } from "../modules/changes/service.js";
 import type { DocumentService } from "../modules/documents/service.js";
 import type { DashboardService } from "../modules/dashboard/service.js";
 import type { ProjectService } from "../modules/projects/service.js";
+import type { CommunicationsService } from "../modules/communications/communications.service.js";
 import type { SocratesService } from "../modules/socrates/service.js";
 
 export interface AppServices {
@@ -24,6 +25,7 @@ export interface AppServices {
   auditService: AuditService;
   socratesService: SocratesService;
   dashboardService: DashboardService;
+  communicationsService: CommunicationsService;
 }
 
 export interface AppContext {

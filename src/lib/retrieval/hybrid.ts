@@ -15,6 +15,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import type { EmbeddingProvider } from "../ai/provider.js";
+import { stableBodyHash } from "../communications/idempotency.js";
 import { chunkText } from "./chunking.js";
 import type { RetrievalCandidate, RetrievalDomains } from "./types.js";
 import type { QueryIntent } from "./intent.js";
@@ -413,7 +414,7 @@ async function retrieveMessages(
     where: { projectId, bodyText: { not: "" } },
     orderBy: { sentAt: "desc" },
     take: Math.max(topK * 4, 20),
-    include: { thread: true },
+    include: { thread: true, attachments: true },
   });
 
   if (messages.length === 0) {
@@ -501,20 +502,18 @@ async function ensureCommunicationChunksIndexed(
   messages: Array<{
     id: string;
     projectId: string;
+    connectorId: string;
+    provider: import("@prisma/client").CommunicationProvider;
     threadId: string;
     senderLabel: string;
+    senderEmail?: string | null;
     bodyText: string;
-    thread: { subject: string | null };
+    bodyHtml?: string | null;
+    thread: { subject: string | null; participantsJson?: unknown };
+    attachments?: Array<{ filename: string | null }>;
   }>
 ) {
-  const communicationMessageChunkDelegate = (prisma as PrismaClient & {
-    communicationMessageChunk: {
-      findMany: typeof prisma.documentChunk.findMany;
-      create: typeof prisma.documentChunk.create;
-    };
-  }).communicationMessageChunk;
-
-  const existingChunks = await communicationMessageChunkDelegate.findMany({
+  const existingChunks = await prisma.communicationMessageChunk.findMany({
     where: {
       messageId: {
         in: messages.map((message) => message.id)
@@ -549,19 +548,37 @@ async function ensureCommunicationChunksIndexed(
 
     for (const chunk of chunks) {
       try {
-        const created = await communicationMessageChunkDelegate.create({
+        const attachmentNames = (message.attachments ?? [])
+          .map((attachment) => attachment.filename)
+          .filter((value): value is string => Boolean(value && value.trim().length > 0));
+        const contentSignature = stableBodyHash(
+          normalizedBody,
+          `${message.thread.subject ?? ""}|${attachmentNames.join(",")}`
+        );
+        const created = await prisma.communicationMessageChunk.create({
           data: {
             messageId: message.id,
             threadId: message.threadId,
             projectId: message.projectId,
+            connectorId: message.connectorId,
+            provider: message.provider,
             chunkIndex: chunk.chunkIndex,
             content: chunk.content,
             contextualContent: chunk.contextualContent,
-            lexicalContent: chunk.contextualContent,
+            lexicalContent: [
+              message.thread.subject ?? "",
+              message.senderLabel,
+              message.senderEmail ?? "",
+              normalizedBody,
+              ...attachmentNames
+            ]
+              .join(" ")
+              .trim(),
             tokenCount: chunk.tokenCount,
             metadataJson: {
               senderLabel: message.senderLabel,
-              subject: message.thread.subject
+              subject: message.thread.subject,
+              contentSignature
             }
           }
         });

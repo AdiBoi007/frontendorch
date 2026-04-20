@@ -9,6 +9,7 @@ import { requestContextPlugin } from "./context.js";
 import { registerAuthRoutes } from "../modules/auth/routes.js";
 import { registerProjectRoutes } from "../modules/projects/routes.js";
 import { registerDocumentRoutes } from "../modules/documents/routes.js";
+import { registerCommunicationRoutes } from "../modules/communications/communications.routes.js";
 import { registerBrainRoutes } from "../modules/brain/routes.js";
 import { registerChangeProposalRoutes } from "../modules/changes/routes.js";
 import { registerSocratesRoutes } from "../modules/socrates/routes.js";
@@ -63,6 +64,7 @@ export async function buildApp(context: AppContext) {
   await app.register(registerAuthRoutes, { prefix: "/v1/auth" });
   await app.register(registerProjectRoutes, { prefix: "/v1" });
   await app.register(registerDocumentRoutes, { prefix: "/v1" });
+  await app.register(registerCommunicationRoutes, { prefix: "/v1" });
   await app.register(registerBrainRoutes, { prefix: "/v1" });
   await app.register(registerChangeProposalRoutes, { prefix: "/v1" });
   await app.register(registerSocratesRoutes, { prefix: "/v1" });

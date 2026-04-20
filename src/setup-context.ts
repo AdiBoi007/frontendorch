@@ -11,6 +11,7 @@ import { BrainService } from "./modules/brain/service.js";
 import { ChangeProposalService } from "./modules/changes/service.js";
 import { DashboardService } from "./modules/dashboard/service.js";
 import { DocumentService } from "./modules/documents/service.js";
+import { CommunicationsService } from "./modules/communications/communications.service.js";
 import { ProjectService } from "./modules/projects/service.js";
 import { SocratesService } from "./modules/socrates/service.js";
 import type { AppContext } from "./types/index.js";
@@ -60,6 +61,14 @@ export function buildContext(input: {
     auditService
   );
   const dashboardService = new DashboardService(input.prisma, projectService, auditService, input.telemetry);
+  const communicationsService = new CommunicationsService(
+    input.prisma,
+    projectService,
+    auditService,
+    jobs,
+    input.embeddingProvider,
+    input.telemetry
+  );
 
   const services = {
     auditService,
@@ -69,7 +78,8 @@ export function buildContext(input: {
     brainService,
     changeProposalService,
     socratesService,
-    dashboardService
+    dashboardService,
+    communicationsService
   };
 
   if (jobs instanceof InlineJobDispatcher) {
@@ -114,6 +124,22 @@ export function buildContext(input: {
       refresh_dashboard_snapshot: async (payload) => {
         await services.dashboardService.refreshSnapshotJob(
           payload as { scope: "general" | "project"; orgId: string; projectId?: string | null; reason?: string }
+        );
+      },
+      sync_communication_connector: async (payload) => {
+        await services.communicationsService.sync.runSyncJob(
+          payload as {
+            connectorId: string;
+            projectId: string;
+            syncType: "manual" | "webhook" | "backfill" | "incremental";
+            syncRunId: string;
+            idempotencyKey?: string;
+          }
+        );
+      },
+      index_communication_message: async (payload) => {
+        await services.communicationsService.indexing.runIndexJob(
+          payload as { messageId: string; idempotencyKey?: string }
         );
       }
     };

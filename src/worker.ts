@@ -65,6 +65,22 @@ registerWorker(context, `${env.QUEUE_PREFIX}-jobs`, {
     await context.services.dashboardService.refreshSnapshotJob(
       payload as { scope: "general" | "project"; orgId: string; projectId?: string | null; reason?: string }
     );
+  },
+  [JobNames.syncCommunicationConnector]: async (payload) => {
+    await context.services.communicationsService.sync.runSyncJob(
+      payload as {
+        connectorId: string;
+        projectId: string;
+        syncType: "manual" | "webhook" | "backfill" | "incremental";
+        syncRunId: string;
+        idempotencyKey?: string;
+      }
+    );
+  },
+  [JobNames.indexCommunicationMessage]: async (payload) => {
+    await context.services.communicationsService.indexing.runIndexJob(
+      payload as { messageId: string; idempotencyKey?: string }
+    );
   }
 });
 

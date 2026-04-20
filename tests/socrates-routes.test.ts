@@ -114,6 +114,14 @@ function createContext(): AppContext {
       changeProposalService: {} as any,
       auditService: { record: vi.fn() } as any,
       socratesService: socratesService as any,
+      dashboardService: {} as any,
+      communicationsService: {
+        connectors: {} as any,
+        sync: {} as any,
+        timeline: {} as any,
+        indexing: {} as any,
+        importManualBatch: vi.fn()
+      } as any,
     },
   } as unknown as AppContext;
 }

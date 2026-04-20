@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import pino from "pino";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app/build-app.js";
+import { AppError } from "../src/app/errors.js";
 import type { AppContext } from "../src/types/index.js";
 
 function createToken(role: "manager" | "dev" | "client") {
@@ -152,6 +153,80 @@ function createContext() {
     refreshSnapshotJob: vi.fn(async () => undefined)
   };
 
+  const communicationsService = {
+    connectors: {
+      list: vi.fn(async () => [
+        {
+          id: "connector-1",
+          provider: "manual_import",
+          accountLabel: "Manual import",
+          status: "connected",
+          lastSyncedAt: null,
+          lastError: null,
+          configSummary: { threadCount: 1, messageCount: 1, syncRunCount: 0 }
+        }
+      ]),
+      get: vi.fn(async () => ({
+        id: "connector-1",
+        provider: "manual_import",
+        accountLabel: "Manual import",
+        status: "connected",
+        counts: { threads: 1, messages: 1 },
+        recentSyncRuns: []
+      })),
+      update: vi.fn(async () => ({ id: "connector-1", accountLabel: "Renamed", status: "connected" })),
+      connect: vi.fn(async () => ({ connectorId: "connector-1", provider: "manual_import", status: "connected", redirectUrl: null })),
+      revoke: vi.fn(async () => ({ id: "connector-1", status: "revoked" })),
+      listSyncRuns: vi.fn(async () => [{ id: "sync-1", status: "completed" }])
+    },
+    sync: {
+      queueSync: vi.fn(async () => ({ connectorId: "connector-1", syncRunId: "sync-1", queued: true })),
+      runSyncJob: vi.fn(async () => undefined)
+    },
+    timeline: {
+      getTimeline: vi.fn(async () => ({
+        items: [{ threadId: "thread-1", provider: "manual_import", latestMessage: { id: "msg-1" } }],
+        meta: { limit: 25, nextCursor: null, hasMore: false }
+      })),
+      listThreads: vi.fn(async () => ({
+        items: [{ threadId: "thread-1", provider: "manual_import", latestMessage: { id: "msg-1" } }],
+        meta: { limit: 25, nextCursor: null, hasMore: false }
+      })),
+      getThread: vi.fn(async () => ({
+        thread: { id: "thread-1", provider: "manual_import", subject: "Client request" },
+        messages: [{ id: "msg-1", bodyText: "Need this change" }],
+        linkedChanges: [],
+        linkedDecisions: [],
+        openTargets: { thread: { targetType: "thread", targetRef: { threadId: "thread-1" } }, documents: [] },
+        viewerState: { pageContext: "doc_viewer", selectedRefType: "document", selectedRefId: null }
+      })),
+      getMessage: vi.fn(async () => ({
+        connector: { id: "connector-1", provider: "manual_import", accountLabel: "Manual import", status: "connected" },
+        message: { id: "msg-1", threadId: "thread-1", bodyText: "Need this change" },
+        thread: { id: "thread-1", subject: "Client request" },
+        linkedDocuments: [{ sectionId: "sec-1", anchorId: "overview-1" }],
+        linkedChanges: [],
+        linkedDecisions: [],
+        revisions: [],
+        attachments: [],
+        chunks: [],
+        openTargets: { thread: { targetType: "thread", targetRef: { threadId: "thread-1" } }, documents: [] }
+      }))
+    },
+    indexing: {
+      runIndexJob: vi.fn(async () => undefined),
+      indexCommunicationMessage: vi.fn(async () => ({ indexed: true, chunkCount: 1 }))
+    },
+    importManualBatch: vi.fn(async () => ({
+      connectorId: "connector-1",
+      threadId: "thread-1",
+      messageIds: ["msg-1"],
+      createdMessageCount: 1,
+      updatedRevisionCount: 0,
+      indexed: true
+    }))
+  };
+
   return {
     env: {
       NODE_ENV: "test",
@@ -204,7 +279,8 @@ function createContext() {
       brainService,
       changeProposalService,
       auditService: { record: vi.fn() },
-      dashboardService
+      dashboardService,
+      communicationsService
     }
   } as unknown as AppContext;
 }
@@ -353,6 +429,10 @@ describe("route contracts", () => {
 
     expect(managerResponse.statusCode).toBe(200);
     expect(managerResponse.json().data.message.id).toBe("msg-1");
+    expect(context.services.communicationsService.timeline.getMessage).toHaveBeenCalled();
+    vi.mocked(context.services.communicationsService.timeline.getMessage).mockRejectedValueOnce(
+      new AppError(403, "Clients cannot access communication evidence", "communication_access_denied")
+    );
 
     const clientResponse = await app.inject({
       method: "GET",
@@ -482,5 +562,117 @@ describe("route contracts", () => {
     });
 
     expect(devResponse.statusCode).toBe(403);
+  });
+
+  it("supports communication connector and timeline routes", async () => {
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/connectors",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.list).toHaveBeenCalled();
+
+    const connectResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/connectors/manual_import/connect",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(connectResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.connect).toHaveBeenCalled();
+
+    const syncResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/connectors/3322717f-2c10-4239-b525-6fbc9158f4fb/sync",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      },
+      payload: { syncType: "manual" }
+    });
+
+    expect(syncResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.sync.queueSync).toHaveBeenCalled();
+
+    const syncRunsResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/connectors/3322717f-2c10-4239-b525-6fbc9158f4fb/sync-runs",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(syncRunsResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.listSyncRuns).toHaveBeenCalled();
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/communications/import",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      },
+      payload: {
+        provider: "manual_import",
+        accountLabel: "Demo import",
+        thread: {
+          providerThreadId: "thread-reporting-001",
+          subject: "Reporting requirement discussion",
+          participants: [{ label: "Client", externalRef: "client@example.com" }]
+        },
+        messages: [
+          {
+            providerMessageId: "msg-001",
+            senderLabel: "Client",
+            sentAt: "2026-04-19T10:01:00.000Z",
+            bodyText: "Can we add weekly reporting for managers?",
+            messageType: "user",
+            attachments: []
+          }
+        ]
+      }
+    });
+
+    expect(importResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.importManualBatch).toHaveBeenCalled();
+
+    const timelineResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/communications/timeline?limit=10",
+      headers: {
+        authorization: `Bearer ${createToken("dev")}`
+      }
+    });
+
+    expect(timelineResponse.statusCode).toBe(200);
+    expect(timelineResponse.json().data[0].threadId).toBe("thread-1");
+
+    const revokeResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/connectors/3322717f-2c10-4239-b525-6fbc9158f4fb/revoke",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(revokeResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.revoke).toHaveBeenCalled();
+    vi.mocked(context.services.communicationsService.timeline.getTimeline).mockRejectedValueOnce(
+      new AppError(403, "Clients cannot access communication timeline", "communication_access_denied")
+    );
+
+    const clientTimelineResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/communications/timeline",
+      headers: {
+        authorization: `Bearer ${createToken("client")}`
+      }
+    });
+
+    expect(clientTimelineResponse.statusCode).toBe(403);
   });
 });

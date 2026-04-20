@@ -143,6 +143,38 @@ enum DecisionStatus {
   superseded
 }
 
+enum CommunicationProvider {
+  manual_import
+  slack
+  gmail
+  outlook
+  microsoft_teams
+  whatsapp_business
+}
+
+enum CommunicationConnectorStatus {
+  pending_auth
+  connected
+  syncing
+  error
+  revoked
+}
+
+enum CommunicationSyncType {
+  manual
+  webhook
+  backfill
+  incremental
+}
+
+enum CommunicationSyncStatus {
+  queued
+  running
+  completed
+  partial
+  failed
+}
+
 enum CommunicationMessageType {
   user
   system
@@ -150,6 +182,22 @@ enum CommunicationMessageType {
   file_share
   note
   other
+}
+
+enum AttachmentStorageStatus {
+  metadata_only
+  stored
+  extraction_pending
+  extracted
+  failed
+}
+
+enum WebhookEventStatus {
+  received
+  ignored_duplicate
+  queued
+  processed
+  failed
 }
 
 enum JobRunStatus {
@@ -226,6 +274,7 @@ model Organization {
   tokens            RefreshToken[]
   audits            AuditEvent[]
   dashboardSnapshots DashboardSnapshot[]
+  oauthStates       OAuthState[]
 
   @@map("organizations")
 }
@@ -253,6 +302,8 @@ model User {
   acceptedDecisions    DecisionRecord[]      @relation("accepted_decisions")
   audits               AuditEvent[]
   socrateSessions      SocratesSession[]     @relation("socrates_sessions")
+  createdConnectors    CommunicationConnector[] @relation("created_connectors")
+  oauthStates          OAuthState[]          @relation("oauth_actor")
 
   @@unique([orgId, email])
   @@map("users")
@@ -298,8 +349,14 @@ model Project {
   changeLinks   SpecChangeLink[]
   decisions     DecisionRecord[]
   auditEvents   AuditEvent[]
+  communicationConnectors CommunicationConnector[]
+  communicationSyncRuns   CommunicationSyncRun[]
+  oauthStates             OAuthState[]
+  webhookEvents           ProviderWebhookEvent[]
   threads            CommunicationThread[]
   messages           CommunicationMessage[]
+  messageRevisions   CommunicationMessageRevision[]
+  attachments        CommunicationAttachment[]
   messageChunks      CommunicationMessageChunk[]
   socrateSessions    SocratesSession[]
   dashboardSnapshots DashboardSnapshot[]
@@ -573,71 +630,232 @@ model DecisionRecord {
 }
 
 model CommunicationThread {
-  id                String      @id @default(uuid()) @db.Uuid
-  projectId         String      @map("project_id") @db.Uuid
-  providerThreadId  String      @map("provider_thread_id")
+  id                String                  @id @default(uuid()) @db.Uuid
+  projectId         String                  @map("project_id") @db.Uuid
+  connectorId       String                  @map("connector_id") @db.Uuid
+  provider          CommunicationProvider
+  providerThreadId  String                  @map("provider_thread_id")
   subject           String?
-  participantsJson  Json        @map("participants_json")
-  startedAt         DateTime?   @map("started_at") @db.Timestamptz(6)
-  lastMessageAt     DateTime?   @map("last_message_at") @db.Timestamptz(6)
-  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  project           Project     @relation(fields: [projectId], references: [id])
+  normalizedSubject String?                 @map("normalized_subject")
+  participantsJson  Json                    @map("participants_json")
+  threadUrl         String?                 @map("thread_url")
+  rawMetadataJson   Json?                   @map("raw_metadata_json")
+  startedAt         DateTime?               @map("started_at") @db.Timestamptz(6)
+  lastMessageAt     DateTime?               @map("last_message_at") @db.Timestamptz(6)
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project           Project                 @relation(fields: [projectId], references: [id])
+  connector         CommunicationConnector  @relation(fields: [connectorId], references: [id])
   messages          CommunicationMessage[]
   chunks            CommunicationMessageChunk[]
 
-  @@unique([projectId, providerThreadId])
-  @@index([projectId, lastMessageAt(sort: Desc)])
+  @@unique([connectorId, providerThreadId])
+  @@index([projectId, provider, lastMessageAt(sort: Desc)])
+  @@index([connectorId, lastMessageAt(sort: Desc)])
   @@map("communication_threads")
 }
 
 model CommunicationMessage {
-  id                String                  @id @default(uuid()) @db.Uuid
-  projectId         String                  @map("project_id") @db.Uuid
-  threadId          String                  @map("thread_id") @db.Uuid
-  providerMessageId String                  @map("provider_message_id")
-  senderLabel       String                  @map("sender_label")
-  senderExternalRef String?                 @map("sender_external_ref")
-  sentAt            DateTime                @map("sent_at") @db.Timestamptz(6)
-  bodyText          String                  @map("body_text")
-  bodyHtml          String?                 @map("body_html")
+  id                String                     @id @default(uuid()) @db.Uuid
+  projectId         String                     @map("project_id") @db.Uuid
+  connectorId       String                     @map("connector_id") @db.Uuid
+  threadId          String                     @map("thread_id") @db.Uuid
+  provider          CommunicationProvider
+  providerMessageId String                     @map("provider_message_id")
+  providerPermalink String?                    @map("provider_permalink")
+  senderLabel       String                     @map("sender_label")
+  senderExternalRef String?                    @map("sender_external_ref")
+  senderEmail       String?                    @map("sender_email")
+  sentAt            DateTime                   @map("sent_at") @db.Timestamptz(6)
+  bodyText          String                     @map("body_text")
+  bodyHtml          String?                    @map("body_html")
+  bodyHash          String                     @map("body_hash")
   messageType       CommunicationMessageType @map("message_type")
-  replyToMessageId  String?                 @map("reply_to_message_id") @db.Uuid
-  rawMetadataJson   Json?                   @map("raw_metadata_json")
-  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  project           Project                 @relation(fields: [projectId], references: [id])
-  thread            CommunicationThread     @relation(fields: [threadId], references: [id])
-  replyTo           CommunicationMessage?   @relation("message_reply", fields: [replyToMessageId], references: [id])
-  replies           CommunicationMessage[]  @relation("message_reply")
+  isEdited          Boolean                  @default(false) @map("is_edited")
+  isDeletedByProvider Boolean                @default(false) @map("is_deleted_by_provider")
+  replyToMessageId  String?                  @map("reply_to_message_id") @db.Uuid
+  rawMetadataJson   Json?                    @map("raw_metadata_json")
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  project           Project                  @relation(fields: [projectId], references: [id])
+  connector         CommunicationConnector   @relation(fields: [connectorId], references: [id])
+  thread            CommunicationThread      @relation(fields: [threadId], references: [id])
+  replyTo           CommunicationMessage?    @relation("message_reply", fields: [replyToMessageId], references: [id])
+  replies           CommunicationMessage[]   @relation("message_reply")
+  revisions         CommunicationMessageRevision[]
+  attachments       CommunicationAttachment[]
   chunks            CommunicationMessageChunk[]
 
-  @@unique([threadId, providerMessageId])
-  @@index([projectId, sentAt(sort: Desc)])
+  @@unique([connectorId, providerMessageId])
+  @@index([projectId, provider, sentAt(sort: Desc)])
   @@index([threadId, sentAt(sort: Desc)])
   @@map("communication_messages")
 }
 
+model CommunicationMessageRevision {
+  id             String                 @id @default(uuid()) @db.Uuid
+  messageId      String                 @map("message_id") @db.Uuid
+  projectId      String                 @map("project_id") @db.Uuid
+  connectorId    String                 @map("connector_id") @db.Uuid
+  provider       CommunicationProvider
+  revisionIndex  Int                    @map("revision_index")
+  bodyText       String                 @map("body_text")
+  bodyHtml       String?                @map("body_html")
+  bodyHash       String                 @map("body_hash")
+  rawMetadataJson Json?                 @map("raw_metadata_json")
+  editedAt       DateTime?              @map("edited_at") @db.Timestamptz(6)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  message        CommunicationMessage   @relation(fields: [messageId], references: [id])
+  project        Project                @relation(fields: [projectId], references: [id])
+  connector      CommunicationConnector @relation(fields: [connectorId], references: [id])
+
+  @@unique([messageId, revisionIndex])
+  @@index([projectId, provider, createdAt(sort: Desc)])
+  @@index([messageId, createdAt(sort: Desc)])
+  @@map("communication_message_revisions")
+}
+
+model CommunicationAttachment {
+  id                String                 @id @default(uuid()) @db.Uuid
+  messageId         String                 @map("message_id") @db.Uuid
+  projectId         String                 @map("project_id") @db.Uuid
+  connectorId       String                 @map("connector_id") @db.Uuid
+  provider          CommunicationProvider
+  providerAttachmentId String?             @map("provider_attachment_id")
+  filename          String?
+  mimeType          String?                @map("mime_type")
+  fileSize          BigInt?                @map("file_size")
+  providerUrl       String?                @map("provider_url")
+  storageStatus     AttachmentStorageStatus @default(metadata_only) @map("storage_status")
+  fileKey           String?                @map("file_key")
+  extractionText    String?                @map("extraction_text")
+  rawMetadataJson   Json?                  @map("raw_metadata_json")
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  message           CommunicationMessage   @relation(fields: [messageId], references: [id])
+  project           Project                @relation(fields: [projectId], references: [id])
+  connector         CommunicationConnector @relation(fields: [connectorId], references: [id])
+
+  @@unique([messageId, providerAttachmentId])
+  @@index([projectId, provider, createdAt(sort: Desc)])
+  @@index([messageId])
+  @@map("communication_attachments")
+}
+
 model CommunicationMessageChunk {
-  id                String                    @id @default(uuid()) @db.Uuid
-  messageId         String                    @map("message_id") @db.Uuid
-  threadId          String                    @map("thread_id") @db.Uuid
-  projectId         String                    @map("project_id") @db.Uuid
-  chunkIndex        Int                       @map("chunk_index")
+  id                String                  @id @default(uuid()) @db.Uuid
+  messageId         String                  @map("message_id") @db.Uuid
+  threadId          String                  @map("thread_id") @db.Uuid
+  projectId         String                  @map("project_id") @db.Uuid
+  connectorId       String                  @map("connector_id") @db.Uuid
+  provider          CommunicationProvider
+  chunkIndex        Int                     @map("chunk_index")
   content           String
-  contextualContent String?                   @map("contextual_content")
-  lexicalContent    String                    @map("lexical_content")
+  contextualContent String?                 @map("contextual_content")
+  lexicalContent    String                  @map("lexical_content")
   embedding         Unsupported("vector(1536)")?
-  tokenCount        Int                       @map("token_count")
-  metadataJson      Json?                     @map("metadata_json")
-  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  message           CommunicationMessage      @relation(fields: [messageId], references: [id])
-  thread            CommunicationThread       @relation(fields: [threadId], references: [id])
-  project           Project                   @relation(fields: [projectId], references: [id])
+  tokenCount        Int                     @map("token_count")
+  metadataJson      Json?                   @map("metadata_json")
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  message           CommunicationMessage    @relation(fields: [messageId], references: [id])
+  thread            CommunicationThread     @relation(fields: [threadId], references: [id])
+  project           Project                 @relation(fields: [projectId], references: [id])
+  connector         CommunicationConnector  @relation(fields: [connectorId], references: [id])
 
   @@unique([messageId, chunkIndex])
-  @@index([projectId, threadId])
+  @@index([projectId, provider, threadId])
   @@index([messageId])
   @@map("communication_message_chunks")
+}
+
+model CommunicationConnector {
+  id                String                       @id @default(uuid()) @db.Uuid
+  projectId         String                       @map("project_id") @db.Uuid
+  provider          CommunicationProvider
+  accountLabel      String                       @map("account_label")
+  status            CommunicationConnectorStatus
+  credentialsRef    String?                      @map("credentials_ref")
+  configJson        Json?                        @map("config_json")
+  providerCursorJson Json?                       @map("provider_cursor_json")
+  lastSyncedAt      DateTime?                    @map("last_synced_at") @db.Timestamptz(6)
+  lastError         String?                      @map("last_error")
+  createdBy         String                       @map("created_by") @db.Uuid
+  createdAt         DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project           Project                      @relation(fields: [projectId], references: [id])
+  creator           User                         @relation("created_connectors", fields: [createdBy], references: [id])
+  syncRuns          CommunicationSyncRun[]
+  threads           CommunicationThread[]
+  messages          CommunicationMessage[]
+  messageRevisions  CommunicationMessageRevision[]
+  attachments       CommunicationAttachment[]
+  messageChunks     CommunicationMessageChunk[]
+  webhookEvents     ProviderWebhookEvent[]
+
+  @@unique([projectId, provider])
+  @@index([projectId, status])
+  @@map("communication_connectors")
+}
+
+model CommunicationSyncRun {
+  id               String                   @id @default(uuid()) @db.Uuid
+  connectorId      String                   @map("connector_id") @db.Uuid
+  projectId        String                   @map("project_id") @db.Uuid
+  provider         CommunicationProvider
+  syncType         CommunicationSyncType    @map("sync_type")
+  status           CommunicationSyncStatus
+  cursorBeforeJson Json?                    @map("cursor_before_json")
+  cursorAfterJson  Json?                    @map("cursor_after_json")
+  summaryJson      Json?                    @map("summary_json")
+  errorMessage     String?                  @map("error_message")
+  startedAt        DateTime?                @map("started_at") @db.Timestamptz(6)
+  finishedAt       DateTime?                @map("finished_at") @db.Timestamptz(6)
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  connector        CommunicationConnector   @relation(fields: [connectorId], references: [id])
+  project          Project                  @relation(fields: [projectId], references: [id])
+
+  @@index([connectorId, createdAt(sort: Desc)])
+  @@index([projectId, status])
+  @@map("communication_sync_runs")
+}
+
+model OAuthState {
+  id            String                 @id @default(uuid()) @db.Uuid
+  orgId         String                 @map("org_id") @db.Uuid
+  projectId     String                 @map("project_id") @db.Uuid
+  provider      CommunicationProvider
+  actorUserId   String                 @map("actor_user_id") @db.Uuid
+  nonceHash     String                 @unique @map("nonce_hash")
+  redirectAfter String?                @map("redirect_after")
+  expiresAt     DateTime               @map("expires_at") @db.Timestamptz(6)
+  usedAt        DateTime?              @map("used_at") @db.Timestamptz(6)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization  Organization           @relation(fields: [orgId], references: [id])
+  project       Project                @relation(fields: [projectId], references: [id])
+  actor         User                   @relation("oauth_actor", fields: [actorUserId], references: [id])
+
+  @@index([projectId, provider])
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
+model ProviderWebhookEvent {
+  id             String                 @id @default(uuid()) @db.Uuid
+  provider       CommunicationProvider
+  providerEventId String                @map("provider_event_id")
+  connectorId    String?                @map("connector_id") @db.Uuid
+  projectId      String?                @map("project_id") @db.Uuid
+  eventType      String                 @map("event_type")
+  rawPayloadHash String                 @map("raw_payload_hash")
+  status         WebhookEventStatus
+  receivedAt     DateTime               @map("received_at") @db.Timestamptz(6)
+  processedAt    DateTime?              @map("processed_at") @db.Timestamptz(6)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  connector      CommunicationConnector? @relation(fields: [connectorId], references: [id])
+  project        Project?               @relation(fields: [projectId], references: [id])
+
+  @@unique([provider, providerEventId])
+  @@index([provider, receivedAt(sort: Desc)])
+  @@index([projectId, status])
+  @@map("provider_webhook_events")
 }
 
 model AuditEvent {

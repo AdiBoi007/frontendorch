@@ -8,7 +8,10 @@ export const JobNames = {
   generateProductBrain: "generate_product_brain",
   applyAcceptedChange: "apply_accepted_change",
   precomputeSocratesSuggestions: "precompute_socrates_suggestions",
-  refreshDashboardSnapshot: "refresh_dashboard_snapshot"
+  refreshDashboardSnapshot: "refresh_dashboard_snapshot",
+  syncCommunicationConnector: "sync_communication_connector",
+  ingestCommunicationBatch: "ingest_communication_batch",
+  indexCommunicationMessage: "index_communication_message"
 } as const;
 
 export type JobName = (typeof JobNames)[keyof typeof JobNames];

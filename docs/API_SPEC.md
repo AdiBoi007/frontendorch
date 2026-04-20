@@ -566,60 +566,249 @@ Compare two Product Brain versions.
 
 ## 8. Communication routes
 
-## 8.1 POST /v1/projects/:projectId/connectors/:provider/connect
-Connect Slack, Gmail, or WhatsApp Business.
+The current communication layer is Build C1: provider-agnostic schema hardening, manual import, connector read models, sync-run tracking, message indexing, and timeline/thread/message evidence APIs.
 
-### Providers
-- `slack`
-- `gmail`
-- `whatsapp_business`
+### C1 authorization rules
+- manager-only:
+  - connector list/detail/update/connect/revoke
+  - manual import
+  - connector sync
+  - sync-run history
+- manager + assigned dev:
+  - timeline
+  - thread detail
+  - message evidence detail
+- client:
+  - blocked from internal communication routes by default
 
-### Notes
-- For OAuth providers, this route may initiate the flow and return a redirect URL.
-- For internal/dev mode, allow inline test credentials in non-production only.
-
----
-
-## 8.2 POST /v1/webhooks/slack
-Webhook ingestion endpoint.
-
----
-
-## 8.3 POST /v1/webhooks/gmail
-Webhook or ingestion callback endpoint.
-
----
-
-## 8.4 POST /v1/webhooks/whatsapp-business
-Webhook ingestion endpoint.
-
----
-
-## 8.5 GET /v1/projects/:projectId/threads
-List normalized project threads.
+## 8.1 GET /v1/projects/:projectId/connectors
+Manager-only connector list.
 
 ### Filters
-- provider
-- updatedSince
-- search
-- hasOpenChangeProposal
+- `provider`
+- `status`
+
+### Response includes
+- connector id/provider/status
+- account label
+- last sync state
+- last error
+- thread/message/sync-run counts
 
 ---
 
-## 8.6 GET /v1/projects/:projectId/threads/:threadId
-Return thread details + message list + linked insights.
+## 8.2 GET /v1/projects/:projectId/connectors/:connectorId
+Manager-only connector detail.
+
+### Response includes
+- connector metadata
+- config JSON
+- recent sync runs
+- thread/message counts
 
 ---
 
-## 8.7 GET /v1/projects/:projectId/messages/:messageId
-Return one message with linked insights, changes, decisions, and open targets.
+## 8.3 PATCH /v1/projects/:projectId/connectors/:connectorId
+Manager-only connector update.
 
-This is an internal-only evidence route for the Live Doc Viewer and provenance inspection. Client-safe viewer payloads must not expose raw message bodies or direct message routes until a future explicit shareability model exists.
+### Body
+```json
+{
+  "accountLabel": "Client email import",
+  "config": {
+    "channelIds": ["C123"]
+  }
+}
+```
+
+### Notes
+- provider cannot be changed
+- C1 allows metadata/config updates only
 
 ---
 
-## 8.8 POST /v1/projects/:projectId/connectors/:connectorId/sync
-Trigger manual incremental sync.
+## 8.4 POST /v1/projects/:projectId/connectors/:provider/connect
+Manager-only provider connect/init route.
+
+### Supported providers in C1
+- `manual_import` → creates or reuses a connected manual connector
+
+### Present but not implemented yet
+- `slack`
+- `gmail`
+- `outlook`
+- `microsoft_teams`
+- `whatsapp_business`
+
+### Behavior
+- `manual_import` returns a connected connector immediately
+- non-manual providers return a clean not-implemented error from provider stubs
+
+---
+
+## 8.5 POST /v1/projects/:projectId/connectors/:connectorId/sync
+Manager-only sync trigger.
+
+### Body
+```json
+{
+  "syncType": "manual"
+}
+```
+
+### Response
+```json
+{
+  "data": {
+    "connectorId": "uuid",
+    "syncRunId": "uuid",
+    "queued": true
+  }
+}
+```
+
+### Notes
+- C1 records sync runs and queues sync jobs for all providers
+- `manual_import` sync is a no-op/provider-summary path
+
+---
+
+## 8.6 POST /v1/projects/:projectId/connectors/:connectorId/revoke
+Manager-only revoke route.
+
+### Behavior
+- sets connector status to `revoked`
+- clears live usability without deleting historical threads/messages/chunks
+
+---
+
+## 8.7 GET /v1/projects/:projectId/connectors/:connectorId/sync-runs
+Manager-only sync run history.
+
+### Filters
+- `limit`
+
+---
+
+## 8.8 POST /v1/projects/:projectId/communications/import
+Manager-only manual import route.
+
+### Purpose
+Imports normalized communication evidence without OAuth/provider APIs.
+
+### Body
+```json
+{
+  "provider": "manual_import",
+  "accountLabel": "Demo import",
+  "thread": {
+    "providerThreadId": "thread-reporting-001",
+    "subject": "Reporting requirement discussion",
+    "participants": [
+      {
+        "label": "Client",
+        "externalRef": "client@example.com",
+        "email": "client@example.com"
+      }
+    ],
+    "startedAt": "2026-04-19T10:00:00.000Z",
+    "threadUrl": null,
+    "rawMetadata": {}
+  },
+  "messages": [
+    {
+      "providerMessageId": "msg-001",
+      "senderLabel": "Client",
+      "senderExternalRef": "client@example.com",
+      "senderEmail": "client@example.com",
+      "sentAt": "2026-04-19T10:01:00.000Z",
+      "bodyText": "Can we add weekly reporting for managers?",
+      "bodyHtml": null,
+      "messageType": "user",
+      "providerPermalink": null,
+      "replyToProviderMessageId": null,
+      "rawMetadata": {},
+      "attachments": []
+    }
+  ]
+}
+```
+
+### Behavior
+- creates or reuses the project's `manual_import` connector
+- upserts one normalized thread
+- upserts messages idempotently by `(connectorId, providerMessageId)`
+- creates `communication_message_revisions` when body changes
+- stores attachment metadata
+- queues or runs message indexing depending on job mode
+- emits `communication_manual_imported`
+
+---
+
+## 8.9 GET /v1/projects/:projectId/communications/timeline
+Manager/dev-only project communication timeline.
+
+### Filters
+- `provider`
+- `hasChangeProposal`
+- `dateFrom`
+- `dateTo`
+- `search`
+- `cursor`
+- `limit`
+
+### Response includes
+- thread summary items
+- latest message excerpt
+- change proposal counts
+- thread open-targets
+- attention hints when linked proposals exist
+
+---
+
+## 8.10 GET /v1/projects/:projectId/threads
+Manager/dev-only thread list.
+
+### Filters
+- `provider`
+- `updatedSince`
+- `search`
+- `cursor`
+- `limit`
+
+---
+
+## 8.11 GET /v1/projects/:projectId/threads/:threadId
+Manager/dev-only thread detail.
+
+### Response includes
+- connector metadata
+- thread metadata
+- messages ordered ascending by `sentAt`
+- linked change proposals
+- linked decisions
+- document open-targets
+- Socrates-compatible `viewerState`
+
+---
+
+## 8.12 GET /v1/projects/:projectId/messages/:messageId
+Manager/dev-only message evidence route.
+
+### Response includes
+- connector summary
+- thread summary
+- message body + provider metadata
+- revisions
+- attachments
+- chunk metadata
+- linked proposals and decisions
+- linked document targets
+- open-targets for thread, message, and documents
+
+### Notes
+- This is the internal evidence route used by Live Doc Viewer provenance paths and Socrates citations/open-target validation.
+- Client-safe viewer payloads must not expose raw message bodies or direct message routes until a later explicit shareability model exists.
 
 ---
 

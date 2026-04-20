@@ -1,11 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
-import { authGuard, requireManager, requireWorkspaceRole } from "../../app/auth.js";
+import { authGuard, requireManager } from "../../app/auth.js";
 import {
   anchorParamsSchema,
   anchorQuerySchema,
   documentParamsSchema,
   documentSearchQuerySchema,
-  messageParamsSchema,
   multipartUploadMetadataSchema,
   paginationQuerySchema,
   pastedTextUploadSchema,
@@ -149,20 +148,6 @@ export const registerDocumentRoutes: FastifyPluginAsync = async (app) => {
         params.anchorId,
         request.authUser!.userId,
         query
-      );
-      return { data: payload, meta: null, error: null };
-    })
-  );
-
-  app.get(
-    "/projects/:projectId/messages/:messageId",
-    authGuard(async (request) => {
-      requireWorkspaceRole(request, ["manager", "dev"]);
-      const params = messageParamsSchema.parse(request.params);
-      const payload = await request.appContext.services.documentService.getMessageEvidence(
-        params.projectId,
-        params.messageId,
-        request.authUser!.userId
       );
       return { data: payload, meta: null, error: null };
     })
