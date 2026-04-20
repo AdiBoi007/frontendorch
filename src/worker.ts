@@ -81,6 +81,34 @@ registerWorker(context, `${env.QUEUE_PREFIX}-jobs`, {
     await context.services.communicationsService.indexing.runIndexJob(
       payload as { messageId: string; idempotencyKey?: string }
     );
+  },
+  [JobNames.classifyMessageInsight]: async (payload) => {
+    await context.services.communicationsService.messageInsights.runClassificationJob(
+      payload as { projectId: string; messageId: string; idempotencyKey?: string }
+    );
+  },
+  [JobNames.classifyThreadInsight]: async (payload) => {
+    await context.services.communicationsService.threadInsights.runClassificationJob(
+      payload as { projectId: string; threadId: string; idempotencyKey?: string }
+    );
+  },
+  [JobNames.generateChangeProposalFromInsight]: async (payload) => {
+    const typed = payload as {
+      projectId: string;
+      insightId?: string;
+      threadInsightId?: string;
+    };
+    if (typed.insightId) {
+      await context.services.communicationsService.messageInsights.autoCreateProposal(
+        typed.projectId,
+        typed.insightId
+      );
+    } else if (typed.threadInsightId) {
+      await context.services.communicationsService.threadInsights.autoCreateProposal(
+        typed.projectId,
+        typed.threadInsightId
+      );
+    }
   }
 });
 

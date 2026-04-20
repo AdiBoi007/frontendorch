@@ -756,25 +756,106 @@ Retrieval units for communication.
 
 ## 9.1 message_insights
 
-Stores classifier outputs per message.
+Stores machine-derived, reviewable insight rows per message body revision.
 
 ### Columns
 - `id` UUID PK
 - `project_id` UUID FK → projects.id
+- `connector_id` UUID FK → communication_connectors.id
+- `provider` enum matching connector provider
 - `message_id` UUID FK → communication_messages.id
-- `insight_type` enum: `clarification | decision | change | contradiction | blocker | info`
+- `thread_id` UUID FK → communication_threads.id
+- `body_hash` text
+- `insight_type` enum:
+  - `info`
+  - `clarification`
+  - `decision`
+  - `requirement_change`
+  - `contradiction`
+  - `blocker`
+  - `action_needed`
+  - `risk`
+  - `approval`
+- `status` enum:
+  - `detected`
+  - `ignored`
+  - `converted_to_proposal`
+  - `converted_to_decision`
+  - `superseded`
 - `summary` text
 - `confidence` numeric(4,3)
+- `should_create_proposal` boolean
+- `should_create_decision` boolean
+- `proposal_type` enum nullable:
+  - `requirement_change`
+  - `decision_change`
+  - `clarification`
+  - `contradiction_resolution`
 - `affected_refs_json` jsonb nullable
+- `evidence_json` jsonb nullable
+- `old_understanding_json` jsonb nullable
+- `new_understanding_json` jsonb nullable
+- `decision_statement` text nullable
+- `impact_summary_json` jsonb nullable
+- `uncertainty_json` jsonb nullable
+- `model_json` jsonb nullable
+- `generated_proposal_id` UUID nullable FK → spec_change_proposals.id
+- `generated_decision_id` UUID nullable FK → decision_records.id
 - `created_at` timestamptz
+- `updated_at` timestamptz
+
+### Constraints
+- unique `(message_id, body_hash)`
 
 ### Notes
 - Message insights are machine-derived, not authoritative truth.
-- They feed proposals and review queues.
+- Each row is tied to a specific normalized message body hash, so reclassified edits do not overwrite prior insight history.
+- They feed review queues and reviewable proposals, but never mark truth as accepted by themselves.
 
 ---
 
-## 9.2 spec_change_proposals
+## 9.2 thread_insights
+
+Stores optional thread-level insight rows across a thread state snapshot.
+
+### Columns
+- `id` UUID PK
+- `project_id` UUID FK → projects.id
+- `connector_id` UUID FK → communication_connectors.id
+- `provider` enum matching connector provider
+- `thread_id` UUID FK → communication_threads.id
+- `thread_state_hash` text
+- `insight_type` enum matching `message_insights.insight_type`
+- `status` enum matching `message_insights.status`
+- `summary` text
+- `confidence` numeric(4,3)
+- `should_create_proposal` boolean
+- `should_create_decision` boolean
+- `proposal_type` enum nullable
+- `source_message_ids_json` jsonb
+- `affected_refs_json` jsonb nullable
+- `evidence_json` jsonb nullable
+- `old_understanding_json` jsonb nullable
+- `new_understanding_json` jsonb nullable
+- `decision_statement` text nullable
+- `impact_summary_json` jsonb nullable
+- `uncertainty_json` jsonb nullable
+- `model_json` jsonb nullable
+- `generated_proposal_id` UUID nullable FK → spec_change_proposals.id
+- `generated_decision_id` UUID nullable FK → decision_records.id
+- `created_at` timestamptz
+- `updated_at` timestamptz
+
+### Constraints
+- unique `(thread_id, thread_state_hash)`
+
+### Notes
+- Thread insights are recommended rather than mandatory, but C2 implements them.
+- They summarize a thread state and can generate proposals or decisions using the same review flow.
+
+---
+
+## 9.3 spec_change_proposals
 
 Structured candidate changes derived from communication and/or manual review.
 
@@ -802,10 +883,11 @@ Structured candidate changes derived from communication and/or manual review.
 ### Notes
 - A proposal can exist without being accepted.
 - Accepting a proposal creates or helps create a new current truth artifact.
+- Communication-generated proposals are created with `status = needs_review` so dashboard pressure and manager review queues can see them immediately.
 
 ---
 
-## 9.3 spec_change_links
+## 9.4 spec_change_links
 
 Normalizes linkage between a proposal and its evidence/affected objects.
 
@@ -819,10 +901,15 @@ Normalizes linkage between a proposal and its evidence/affected objects.
 
 ### Notes
 - This table is required for traceability and overlays.
+- Communication-generated proposals use:
+  - `message` as `source`
+  - `thread` as `evidence`
+  - `document_section` as `affected`
+  - `brain_node` as `affected`
 
 ---
 
-## 9.4 decision_records
+## 9.5 decision_records
 
 Authoritative accepted/rejected decisions.
 
@@ -839,12 +926,12 @@ Authoritative accepted/rejected decisions.
 - `updated_at` timestamptz
 
 ### Notes
-- Link decisions to messages/sections/nodes via a shared relation table if needed.
-- At minimum, decisions must remain citeable through source references in their payload.
+- Communication-derived decision candidates are first created as `open`.
+- If the linked communication proposal is accepted later, the existing decision row is upgraded to `accepted` instead of creating a duplicate decision record.
 
 ---
 
-## 9.5 section_change_markers (recommended read model)
+## 9.6 section_change_markers (recommended read model)
 
 Optional but strongly recommended for the Doc Viewer.
 

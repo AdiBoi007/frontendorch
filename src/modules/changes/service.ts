@@ -169,22 +169,37 @@ export class ChangeProposalService {
 
     await this.prisma.$transaction(async (tx) => {
       let decisionRecordId = proposal.decisionRecordId;
-      if (proposal.proposalType === "decision_change" && !decisionRecordId) {
-        const decision = await tx.decisionRecord.create({
-          data: {
-            projectId,
-            title: proposal.title,
-            statement: proposal.summary,
-            status: "accepted",
-            sourceSummary:
-              proposal.sourceMessageCount > 0
-                ? `Accepted from ${proposal.sourceMessageCount} linked communication messages`
-                : "Accepted from explicit external evidence refs",
-            acceptedBy: actorUserId,
-            acceptedAt: new Date()
-          }
-        });
-        decisionRecordId = decision.id;
+      if (proposal.proposalType === "decision_change") {
+        if (decisionRecordId) {
+          await tx.decisionRecord.update({
+            where: { id: decisionRecordId },
+            data: {
+              status: "accepted",
+              acceptedBy: actorUserId,
+              acceptedAt: new Date(),
+              sourceSummary:
+                proposal.sourceMessageCount > 0
+                  ? `Accepted from ${proposal.sourceMessageCount} linked communication messages`
+                  : "Accepted from explicit external evidence refs"
+            }
+          });
+        } else {
+          const decision = await tx.decisionRecord.create({
+            data: {
+              projectId,
+              title: proposal.title,
+              statement: proposal.summary,
+              status: "accepted",
+              sourceSummary:
+                proposal.sourceMessageCount > 0
+                  ? `Accepted from ${proposal.sourceMessageCount} linked communication messages`
+                  : "Accepted from explicit external evidence refs",
+              acceptedBy: actorUserId,
+              acceptedAt: new Date()
+            }
+          });
+          decisionRecordId = decision.id;
+        }
       }
 
       await tx.specChangeProposal.update({

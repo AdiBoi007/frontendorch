@@ -566,7 +566,7 @@ Compare two Product Brain versions.
 
 ## 8. Communication routes
 
-The current communication layer is Build C1: provider-agnostic schema hardening, manual import, connector read models, sync-run tracking, message indexing, and timeline/thread/message evidence APIs.
+The current communication layer is Build C1 + C2: provider-agnostic schema hardening, manual import, connector read models, sync-run tracking, message indexing, machine-derived insight classification, review queues, and communication-driven proposal generation.
 
 ### C1 authorization rules
 - manager-only:
@@ -574,10 +574,15 @@ The current communication layer is Build C1: provider-agnostic schema hardening,
   - manual import
   - connector sync
   - sync-run history
+  - classify message/thread
+  - ignore insights
+  - create proposals from insights
 - manager + assigned dev:
   - timeline
   - thread detail
   - message evidence detail
+  - message insight list/detail
+  - communication review read model
 - client:
   - blocked from internal communication routes by default
 
@@ -750,7 +755,10 @@ Manager/dev-only project communication timeline.
 
 ### Filters
 - `provider`
+- `insightType`
 - `hasChangeProposal`
+- `hasOpenDecision`
+- `hasBlocker`
 - `dateFrom`
 - `dateTo`
 - `search`
@@ -785,6 +793,7 @@ Manager/dev-only thread detail.
 - connector metadata
 - thread metadata
 - messages ordered ascending by `sentAt`
+- thread insights
 - linked change proposals
 - linked decisions
 - document open-targets
@@ -802,6 +811,7 @@ Manager/dev-only message evidence route.
 - revisions
 - attachments
 - chunk metadata
+- message insights
 - linked proposals and decisions
 - linked document targets
 - open-targets for thread, message, and documents
@@ -809,6 +819,101 @@ Manager/dev-only message evidence route.
 ### Notes
 - This is the internal evidence route used by Live Doc Viewer provenance paths and Socrates citations/open-target validation.
 - Client-safe viewer payloads must not expose raw message bodies or direct message routes until a later explicit shareability model exists.
+
+---
+
+## 8.13 GET /v1/projects/:projectId/message-insights
+Manager/dev-only insight list.
+
+### Filters
+- `status`
+- `insightType`
+- `threadId`
+- `messageId`
+- `provider`
+- `minConfidence`
+- `hasProposal`
+- `cursor`
+- `limit`
+
+### Response includes
+- insight summary
+- confidence
+- source message/thread labels
+- affected section/node ids
+- open targets for message/thread
+
+---
+
+## 8.14 GET /v1/projects/:projectId/message-insights/:insightId
+Manager/dev-only insight detail.
+
+### Response includes
+- summary + confidence
+- evidence payload
+- old/new understanding
+- impact summary
+- uncertainty
+- linked generated proposal/decision ids
+
+---
+
+## 8.15 POST /v1/projects/:projectId/message-insights/:insightId/ignore
+Manager-only.
+
+### Behavior
+- marks the insight as `ignored`
+- does not change accepted truth
+
+---
+
+## 8.16 POST /v1/projects/:projectId/message-insights/:insightId/create-proposal
+Manager-only.
+
+### Behavior
+- validates the insight is truth-affecting and has affected refs
+- dedupes against existing open/accepted proposals in the same area
+- creates or links a `spec_change_proposal`
+- may also create/open a `decision_record`
+- does not accept truth automatically
+
+---
+
+## 8.17 POST /v1/projects/:projectId/messages/:messageId/classify
+Manager-only/debug route.
+
+### Behavior
+- builds a targeted product-aware context pack
+- classifies the message into an insight
+- persists the insight
+- may enqueue proposal generation if thresholds are met
+
+---
+
+## 8.18 POST /v1/projects/:projectId/threads/:threadId/classify
+Manager-only/debug route.
+
+### Behavior
+- classifies the thread state as a whole
+- persists a `thread_insight`
+- may enqueue proposal generation if thresholds are met
+
+---
+
+## 8.19 GET /v1/projects/:projectId/communication-review
+Manager/dev-only review read model.
+
+### Response includes
+- pending important insights
+- generated proposals in `needs_review`
+- generated open decision candidates
+- source labels
+- confidence
+- open targets
+
+### Notes
+- this is a review surface, not accepted truth
+- manager acceptance still uses the existing change-proposal accept route
 
 ---
 

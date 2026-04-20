@@ -2364,6 +2364,44 @@ For implementation-grounded details of the finished C1 build, use:
 
 ---
 
+## 24B. C2 implementation status in this repo
+
+Build C2 is now implemented on top of C1 in this repository.
+
+What C2 implements:
+
+- `message_insights`
+- `thread_insights`
+- product-aware impact resolution using targeted context packs
+- strict-schema message/thread classification
+- confidence degradation when affected refs are weak or invalid
+- conservative thresholds for proposal generation
+- blocker/risk/action-needed insight-only behavior by default
+- dedupe / supersession logic against existing open or accepted proposals
+- communication-derived `spec_change_proposals`
+- open `decision_records` for decision/approval candidates
+- manager/dev review queue read model
+- manager-only ignore / create-proposal / classify routes
+- integration with the existing accepted-change flow so accepted communication proposals still create new Product Brain versions
+
+Current repo-specific clarifications:
+
+- communication-generated proposals are created in `needs_review`, not `detected`
+- communication-generated proposal links use:
+  - `message` as `source`
+  - `thread` as `evidence`
+  - `document_section` as `affected`
+  - `brain_node` as `affected`
+- if a decision candidate already exists when a linked proposal is accepted, the existing `decision_record` is upgraded to `accepted` instead of creating a duplicate decision row
+- clients remain blocked from internal communication intelligence by default
+
+For implementation-grounded details of the finished C2 build, use:
+
+- `feature5.md`
+- `communication_layer_C2.md`
+
+---
+
 ## 25. Source-of-truth references inside the repo
 
 This file is specifically aligned to these repo concepts:

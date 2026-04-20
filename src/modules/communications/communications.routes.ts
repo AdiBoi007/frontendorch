@@ -6,6 +6,8 @@ import {
   connectorPatchBodySchema,
   connectorSyncBodySchema,
   manualImportBodySchema,
+  messageInsightListQuerySchema,
+  messageInsightParamsSchema,
   messageParamsSchema,
   projectParamsSchema,
   providerConnectParamsSchema,
@@ -152,6 +154,97 @@ export const registerCommunicationRoutes: FastifyPluginAsync = async (app) => {
           }))
         }
       });
+      return { data, meta: null, error: null };
+    })
+  );
+
+  app.get(
+    "/projects/:projectId/message-insights",
+    authGuard(async (request) => {
+      const params = projectParamsSchema.parse(request.params);
+      const query = messageInsightListQuerySchema.parse(request.query);
+      const result = await request.appContext.services.communicationsService.messageInsights.list(
+        params.projectId,
+        request.authUser!.userId,
+        query
+      );
+      return { data: result.items, meta: result.meta, error: null };
+    })
+  );
+
+  app.get(
+    "/projects/:projectId/message-insights/:insightId",
+    authGuard(async (request) => {
+      const params = messageInsightParamsSchema.parse(request.params);
+      const data = await request.appContext.services.communicationsService.messageInsights.get(
+        params.projectId,
+        params.insightId,
+        request.authUser!.userId
+      );
+      return { data, meta: null, error: null };
+    })
+  );
+
+  app.post(
+    "/projects/:projectId/message-insights/:insightId/ignore",
+    authGuard(async (request) => {
+      const params = messageInsightParamsSchema.parse(request.params);
+      const data = await request.appContext.services.communicationsService.messageInsights.ignore(
+        params.projectId,
+        params.insightId,
+        request.authUser!.userId
+      );
+      return { data, meta: null, error: null };
+    })
+  );
+
+  app.post(
+    "/projects/:projectId/message-insights/:insightId/create-proposal",
+    authGuard(async (request) => {
+      const params = messageInsightParamsSchema.parse(request.params);
+      const data = await request.appContext.services.communicationsService.messageInsights.createProposal(
+        params.projectId,
+        params.insightId,
+        request.authUser!.userId
+      );
+      return { data, meta: null, error: null };
+    })
+  );
+
+  app.post(
+    "/projects/:projectId/messages/:messageId/classify",
+    authGuard(async (request) => {
+      const params = messageParamsSchema.parse(request.params);
+      const data = await request.appContext.services.communicationsService.messageInsights.classifyMessage(
+        params.projectId,
+        params.messageId,
+        request.authUser!.userId
+      );
+      return { data, meta: null, error: null };
+    })
+  );
+
+  app.post(
+    "/projects/:projectId/threads/:threadId/classify",
+    authGuard(async (request) => {
+      const params = threadParamsSchema.parse(request.params);
+      const data = await request.appContext.services.communicationsService.threadInsights.classifyThread(
+        params.projectId,
+        params.threadId,
+        request.authUser!.userId
+      );
+      return { data, meta: null, error: null };
+    })
+  );
+
+  app.get(
+    "/projects/:projectId/communication-review",
+    authGuard(async (request) => {
+      const params = projectParamsSchema.parse(request.params);
+      const data = await request.appContext.services.communicationsService.messageInsights.getReviewQueue(
+        params.projectId,
+        request.authUser!.userId
+      );
       return { data, meta: null, error: null };
     })
   );

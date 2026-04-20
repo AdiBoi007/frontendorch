@@ -13,6 +13,24 @@ export const connectorStatusSchema = z.enum(["pending_auth", "connected", "synci
 export const syncTypeSchema = z.enum(["manual", "webhook", "backfill", "incremental"]);
 export const syncStatusSchema = z.enum(["queued", "running", "completed", "partial", "failed"]);
 export const communicationMessageTypeSchema = z.enum(["user", "system", "bot", "file_share", "note", "other"]);
+export const messageInsightTypeSchema = z.enum([
+  "info",
+  "clarification",
+  "decision",
+  "requirement_change",
+  "contradiction",
+  "blocker",
+  "action_needed",
+  "risk",
+  "approval"
+]);
+export const messageInsightStatusSchema = z.enum([
+  "detected",
+  "ignored",
+  "converted_to_proposal",
+  "converted_to_decision",
+  "superseded"
+]);
 
 export const projectParamsSchema = z.object({
   projectId: z.string().uuid()
@@ -36,6 +54,11 @@ export const threadParamsSchema = z.object({
 export const messageParamsSchema = z.object({
   projectId: z.string().uuid(),
   messageId: z.string().uuid()
+});
+
+export const messageInsightParamsSchema = z.object({
+  projectId: z.string().uuid(),
+  insightId: z.string().uuid()
 });
 
 export const connectorPatchBodySchema = z.object({
@@ -104,7 +127,16 @@ export const manualImportBodySchema = z.object({
 
 export const timelineQuerySchema = z.object({
   provider: communicationProviderSchema.optional(),
+  insightType: messageInsightTypeSchema.optional(),
   hasChangeProposal: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value ? value === "true" : undefined)),
+  hasOpenDecision: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value ? value === "true" : undefined)),
+  hasBlocker: z
     .enum(["true", "false"])
     .optional()
     .transform((value) => (value ? value === "true" : undefined)),
@@ -119,6 +151,21 @@ export const threadListQuerySchema = z.object({
   provider: communicationProviderSchema.optional(),
   updatedSince: z.string().datetime().optional(),
   search: z.string().trim().min(1).optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25)
+});
+
+export const messageInsightListQuerySchema = z.object({
+  status: messageInsightStatusSchema.optional(),
+  insightType: messageInsightTypeSchema.optional(),
+  threadId: z.string().uuid().optional(),
+  messageId: z.string().uuid().optional(),
+  provider: communicationProviderSchema.optional(),
+  minConfidence: z.coerce.number().min(0).max(1).optional(),
+  hasProposal: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value ? value === "true" : undefined)),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25)
 });

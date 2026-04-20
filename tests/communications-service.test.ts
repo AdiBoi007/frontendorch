@@ -219,7 +219,8 @@ describe("Communication layer C1 services", () => {
     const service = new MessageIndexingService(
       prisma,
       { embedText: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]) } as any,
-      { record: vi.fn().mockResolvedValue(undefined) } as any
+      { record: vi.fn().mockResolvedValue(undefined) } as any,
+      { enqueue: vi.fn().mockResolvedValue(undefined) } as any
     );
 
     await service.runIndexJob({ messageId: "msg-1", idempotencyKey: "index-message:msg-1:test" });

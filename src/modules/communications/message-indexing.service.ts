@@ -3,6 +3,8 @@ import { AppError } from "../../app/errors.js";
 import type { EmbeddingProvider } from "../../lib/ai/provider.js";
 import { buildMessageContextualContent, buildMessageLexicalContent } from "../../lib/communications/message-contextualize.js";
 import { stableBodyHash } from "../../lib/communications/idempotency.js";
+import { jobKeys } from "../../lib/jobs/keys.js";
+import { JobNames, type JobDispatcher } from "../../lib/jobs/types.js";
 import { chunkText } from "../../lib/retrieval/chunking.js";
 import { AuditService } from "../audit/service.js";
 
@@ -10,7 +12,8 @@ export class MessageIndexingService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly embeddingProvider: EmbeddingProvider,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly jobs: JobDispatcher
   ) {}
 
   async runIndexJob(input: { messageId: string; idempotencyKey?: string }) {
@@ -190,6 +193,27 @@ export class MessageIndexingService {
         chunkCount: indexedCount
       }
     });
+
+    const classifyKey = jobKeys.classifyMessageInsight(message.id, expectedBodyHash);
+    await this.prisma.jobRun.upsert({
+      where: { idempotencyKey: classifyKey },
+      update: {
+        jobType: JobNames.classifyMessageInsight,
+        status: "pending",
+        payloadJson: { projectId: message.projectId, messageId: message.id, idempotencyKey: classifyKey }
+      },
+      create: {
+        jobType: JobNames.classifyMessageInsight,
+        status: "pending",
+        idempotencyKey: classifyKey,
+        payloadJson: { projectId: message.projectId, messageId: message.id, idempotencyKey: classifyKey }
+      }
+    });
+    await this.jobs.enqueue(
+      JobNames.classifyMessageInsight,
+      { projectId: message.projectId, messageId: message.id, idempotencyKey: classifyKey },
+      classifyKey
+    );
 
     return { indexed: true, chunkCount: indexedCount };
   }

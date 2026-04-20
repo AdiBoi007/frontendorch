@@ -22,7 +22,10 @@ export class TimelineService {
     actorUserId: string,
     query: {
       provider?: string;
+      insightType?: string;
       hasChangeProposal?: boolean;
+      hasOpenDecision?: boolean;
+      hasBlocker?: boolean;
       dateFrom?: string;
       dateTo?: string;
       search?: string;
@@ -77,6 +80,10 @@ export class TimelineService {
           include: {
             attachments: true
           }
+        },
+        threadInsights: {
+          orderBy: { createdAt: "desc" },
+          take: 10
         }
       }
     });
@@ -132,6 +139,15 @@ export class TimelineService {
         replyToMessageId: message.replyToMessageId,
         attachmentCount: message.attachments.length
       })),
+      insights: thread.threadInsights.map((insight) => ({
+        id: insight.id,
+        insightType: insight.insightType,
+        status: insight.status,
+        summary: insight.summary,
+        confidence: Number(insight.confidence),
+        generatedProposalId: insight.generatedProposalId,
+        generatedDecisionId: insight.generatedDecisionId
+      })),
       linkedChanges: proposals,
       linkedDecisions: decisions,
       openTargets: {
@@ -156,7 +172,8 @@ export class TimelineService {
         thread: true,
         revisions: { orderBy: { revisionIndex: "desc" } },
         attachments: true,
-        chunks: { orderBy: { chunkIndex: "asc" } }
+        chunks: { orderBy: { chunkIndex: "asc" } },
+        insights: { orderBy: { createdAt: "desc" } }
       }
     });
 
@@ -244,6 +261,15 @@ export class TimelineService {
         tokenCount: chunk.tokenCount,
         createdAt: chunk.createdAt.toISOString()
       })),
+      insights: message.insights.map((insight) => ({
+        id: insight.id,
+        insightType: insight.insightType,
+        status: insight.status,
+        summary: insight.summary,
+        confidence: Number(insight.confidence),
+        generatedProposalId: insight.generatedProposalId,
+        generatedDecisionId: insight.generatedDecisionId
+      })),
       linkedChanges: proposals,
       linkedDecisions: decisions,
       linkedDocuments: documentTargets,
@@ -259,7 +285,10 @@ export class TimelineService {
     projectId: string,
     query: {
       provider?: string;
+      insightType?: string;
       hasChangeProposal?: boolean;
+      hasOpenDecision?: boolean;
+      hasBlocker?: boolean;
       dateFrom?: string;
       dateTo?: string;
       search?: string;
@@ -316,7 +345,8 @@ export class TimelineService {
       }
     });
 
-    const proposalCounts = await this.prisma.specChangeLink.groupBy({
+    const [proposalCounts, decisionLinks, blockerCounts, insightTypeCounts] = await Promise.all([
+      this.prisma.specChangeLink.groupBy({
       by: ["linkRefId"],
       where: {
         projectId,
@@ -324,8 +354,49 @@ export class TimelineService {
         linkRefId: { in: threads.map((thread) => thread.id) }
       },
       _count: { _all: true }
-    }).catch(() => []);
+      }).catch(() => []),
+      this.prisma.specChangeProposal.findMany({
+        where: {
+          projectId,
+          decisionRecordId: { not: null },
+          links: {
+            some: {
+              linkType: "thread",
+              linkRefId: { in: threads.map((thread) => thread.id) }
+            }
+          }
+        },
+        include: { links: true }
+      }),
+      this.prisma.messageInsight.groupBy({
+        by: ["threadId"],
+        where: {
+          projectId,
+          insightType: "blocker",
+          threadId: { in: threads.map((thread) => thread.id) }
+        },
+        _count: { _all: true }
+      }).catch(() => []),
+      query.insightType
+        ? this.prisma.messageInsight.groupBy({
+            by: ["threadId"],
+            where: {
+              projectId,
+              insightType: query.insightType as never,
+              threadId: { in: threads.map((thread) => thread.id) }
+            },
+            _count: { _all: true }
+          }).catch(() => [])
+        : Promise.resolve([])
+    ]);
     const proposalCountByThreadId = new Map(proposalCounts.map((item) => [item.linkRefId, item._count._all]));
+    const decisionThreadIds = new Set(
+      decisionLinks.flatMap((proposal) =>
+        proposal.links.filter((link) => link.linkType === "thread").map((link) => link.linkRefId)
+      )
+    );
+    const blockerCountByThreadId = new Map(blockerCounts.map((item) => [item.threadId, item._count._all]));
+    const insightCountByThreadId = new Map(insightTypeCounts.map((item) => [item.threadId, item._count._all]));
 
     let filteredThreads = threads;
     if (query.hasChangeProposal !== undefined) {
@@ -333,6 +404,20 @@ export class TimelineService {
         const hasLinks = (proposalCountByThreadId.get(thread.id) ?? 0) > 0;
         return query.hasChangeProposal ? hasLinks : !hasLinks;
       });
+    }
+    if (query.hasOpenDecision !== undefined) {
+      filteredThreads = filteredThreads.filter((thread) =>
+        query.hasOpenDecision ? decisionThreadIds.has(thread.id) : !decisionThreadIds.has(thread.id)
+      );
+    }
+    if (query.hasBlocker !== undefined) {
+      filteredThreads = filteredThreads.filter((thread) => {
+        const hasBlocker = (blockerCountByThreadId.get(thread.id) ?? 0) > 0;
+        return query.hasBlocker ? hasBlocker : !hasBlocker;
+      });
+    }
+    if (query.insightType) {
+      filteredThreads = filteredThreads.filter((thread) => (insightCountByThreadId.get(thread.id) ?? 0) > 0);
     }
 
     const hasMore = filteredThreads.length > query.limit;
@@ -365,10 +450,16 @@ export class TimelineService {
             }
           : null,
         changeProposalCount: proposalCountByThreadId.get(thread.id) ?? 0,
+        blockerCount: blockerCountByThreadId.get(thread.id) ?? 0,
+        hasOpenDecision: decisionThreadIds.has(thread.id),
         openTarget: this.buildThreadOpenTarget(thread.id),
         attention:
-          includeAttention && (proposalCountByThreadId.get(thread.id) ?? 0) > 0
-            ? { label: "watch", reason: "linked change proposals" }
+          includeAttention && (blockerCountByThreadId.get(thread.id) ?? 0) > 0
+            ? { label: "attention", reason: "linked blocker insights" }
+            : includeAttention && decisionThreadIds.has(thread.id)
+              ? { label: "watch", reason: "open decision candidate" }
+              : includeAttention && (proposalCountByThreadId.get(thread.id) ?? 0) > 0
+                ? { label: "watch", reason: "linked change proposals" }
             : null
       })),
       meta: {

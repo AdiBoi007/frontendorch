@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { manualImportBodySchema, timelineQuerySchema } from "../src/modules/communications/schemas.js";
+import { manualImportBodySchema, messageInsightListQuerySchema, timelineQuerySchema } from "../src/modules/communications/schemas.js";
 
 describe("communication layer schemas", () => {
   it("accepts the C1 manual import payload shape", () => {
@@ -38,5 +38,21 @@ describe("communication layer schemas", () => {
     expect(parsed.provider).toBe("manual_import");
     expect(parsed.hasChangeProposal).toBe(true);
     expect(parsed.limit).toBe(10);
+  });
+
+  it("parses message insight review filters", () => {
+    const parsed = messageInsightListQuerySchema.parse({
+      status: "detected",
+      insightType: "requirement_change",
+      hasProposal: "false",
+      minConfidence: "0.8",
+      limit: "20"
+    });
+
+    expect(parsed.status).toBe("detected");
+    expect(parsed.insightType).toBe("requirement_change");
+    expect(parsed.hasProposal).toBe(false);
+    expect(parsed.minConfidence).toBe(0.8);
+    expect(parsed.limit).toBe(20);
   });
 });

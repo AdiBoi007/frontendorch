@@ -66,6 +66,11 @@ Detected changes can exist in:
 
 Only `accepted` updates the living truth.
 
+For communication-layer C2 specifically:
+- `message_insights` and `thread_insights` may be `detected`, `ignored`, `converted_to_proposal`, `converted_to_decision`, or `superseded`
+- insights are never accepted truth
+- communication-generated proposals are created in `needs_review`, never auto-accepted
+
 ---
 
 ## 3.3 Every accepted change must remain linked forever
@@ -175,6 +180,14 @@ The system maps the candidate to:
 
 This should be explicit and queryable.
 
+For communication-layer C2, impact resolution should be targeted and conservative:
+- use the current message/thread
+- use nearby thread context
+- use the latest accepted Product Brain
+- use likely relevant document sections and graph nodes only
+- use accepted changes, accepted decisions, and unresolved proposals when they help dedupe or disambiguate
+- lower confidence when affected refs are weak or invalid
+
 ---
 
 ## Step 3: create structured proposal
@@ -190,6 +203,15 @@ Create a `spec_change_proposal` with:
 - affected section/node links
 
 At this stage, it is still only a candidate.
+
+For communication-derived proposals in the current repo implementation:
+- create them as `needs_review`
+- add `spec_change_links` for:
+  - source `message`
+  - evidence `thread`
+  - affected `document_section`
+  - affected `brain_node`
+- dedupe against existing open/accepted proposals in the same area before creating a new proposal
 
 ---
 
@@ -240,6 +262,11 @@ Create `decision_record` with:
 
 ## Step 3: accept/reject decision
 Authorized manager accepts or rejects.
+
+If the decision candidate was generated from communication and linked to a `decision_change` proposal:
+- accept the proposal through the normal proposal acceptance path
+- upgrade the existing open `decision_record` to `accepted`
+- do not create a second duplicate decision row
 
 ## Step 4: if accepted and truth-affecting, update current truth
 If the decision changes the product understanding, create a new current Product Brain version or include the decision in the next accepted version.
@@ -298,6 +325,15 @@ A message may stay informational if it only:
 - provides context without changing accepted meaning
 
 The system must not over-upgrade informational chatter into current-truth changes.
+
+Conservative thresholds in the current communication-layer implementation:
+- requirement_change: `>= 0.78`
+- decision: `>= 0.75`
+- approval: `>= 0.75`
+- contradiction: `>= 0.72`
+- clarification (truth-affecting): `>= 0.82`
+- blocker/risk/action_needed: insight only by default
+- info: no proposal
 
 ---
 

@@ -11,7 +11,10 @@ export const JobNames = {
   refreshDashboardSnapshot: "refresh_dashboard_snapshot",
   syncCommunicationConnector: "sync_communication_connector",
   ingestCommunicationBatch: "ingest_communication_batch",
-  indexCommunicationMessage: "index_communication_message"
+  indexCommunicationMessage: "index_communication_message",
+  classifyMessageInsight: "classify_message_insight",
+  classifyThreadInsight: "classify_thread_insight",
+  generateChangeProposalFromInsight: "generate_change_proposal_from_insight"
 } as const;
 
 export type JobName = (typeof JobNames)[keyof typeof JobNames];

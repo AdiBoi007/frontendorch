@@ -66,6 +66,7 @@ export function buildContext(input: {
     projectService,
     auditService,
     jobs,
+    input.generationProvider,
     input.embeddingProvider,
     input.telemetry
   );
@@ -141,6 +142,32 @@ export function buildContext(input: {
         await services.communicationsService.indexing.runIndexJob(
           payload as { messageId: string; idempotencyKey?: string }
         );
+      },
+      classify_message_insight: async (payload) => {
+        await services.communicationsService.messageInsights.runClassificationJob(
+          payload as { projectId: string; messageId: string; idempotencyKey?: string }
+        );
+      },
+      classify_thread_insight: async (payload) => {
+        await services.communicationsService.threadInsights.runClassificationJob(
+          payload as { projectId: string; threadId: string; idempotencyKey?: string }
+        );
+      },
+      generate_change_proposal_from_insight: async (payload) => {
+        const typed = payload as {
+          projectId: string;
+          insightId?: string;
+          threadInsightId?: string;
+          idempotencyKey?: string;
+        };
+        if (typed.insightId) {
+          await services.communicationsService.messageInsights.autoCreateProposal(typed.projectId, typed.insightId);
+        } else if (typed.threadInsightId) {
+          await services.communicationsService.threadInsights.autoCreateProposal(
+            typed.projectId,
+            typed.threadInsightId
+          );
+        }
       }
     };
   }

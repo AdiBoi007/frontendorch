@@ -200,6 +200,26 @@ enum WebhookEventStatus {
   failed
 }
 
+enum MessageInsightType {
+  info
+  clarification
+  decision
+  requirement_change
+  contradiction
+  blocker
+  action_needed
+  risk
+  approval
+}
+
+enum MessageInsightStatus {
+  detected
+  ignored
+  converted_to_proposal
+  converted_to_decision
+  superseded
+}
+
 enum JobRunStatus {
   pending
   running
@@ -358,6 +378,8 @@ model Project {
   messageRevisions   CommunicationMessageRevision[]
   attachments        CommunicationAttachment[]
   messageChunks      CommunicationMessageChunk[]
+  messageInsights    MessageInsight[]
+  threadInsights     ThreadInsight[]
   socrateSessions    SocratesSession[]
   dashboardSnapshots DashboardSnapshot[]
 
@@ -591,6 +613,8 @@ model SpecChangeProposal {
   decisionRecord         DecisionRecord? @relation(fields: [decisionRecordId], references: [id])
   accepter               User?           @relation("accepted_proposals", fields: [acceptedBy], references: [id])
   links                  SpecChangeLink[]
+  generatedFromMessageInsights MessageInsight[] @relation("generated_message_insights")
+  generatedFromThreadInsights  ThreadInsight[]  @relation("generated_thread_insights")
 
   @@map("spec_change_proposals")
 }
@@ -625,6 +649,8 @@ model DecisionRecord {
   project       Project        @relation(fields: [projectId], references: [id])
   accepter      User?          @relation("accepted_decisions", fields: [acceptedBy], references: [id])
   proposals     SpecChangeProposal[]
+  generatedFromMessageInsights MessageInsight[] @relation("generated_message_insights")
+  generatedFromThreadInsights  ThreadInsight[]  @relation("generated_thread_insights")
 
   @@map("decision_records")
 }
@@ -648,6 +674,8 @@ model CommunicationThread {
   connector         CommunicationConnector  @relation(fields: [connectorId], references: [id])
   messages          CommunicationMessage[]
   chunks            CommunicationMessageChunk[]
+  messageInsights   MessageInsight[]
+  threadInsights    ThreadInsight[]
 
   @@unique([connectorId, providerThreadId])
   @@index([projectId, provider, lastMessageAt(sort: Desc)])
@@ -684,6 +712,7 @@ model CommunicationMessage {
   revisions         CommunicationMessageRevision[]
   attachments       CommunicationAttachment[]
   chunks            CommunicationMessageChunk[]
+  insights          MessageInsight[]
 
   @@unique([connectorId, providerMessageId])
   @@index([projectId, provider, sentAt(sort: Desc)])
@@ -789,6 +818,8 @@ model CommunicationConnector {
   attachments       CommunicationAttachment[]
   messageChunks     CommunicationMessageChunk[]
   webhookEvents     ProviderWebhookEvent[]
+  messageInsights   MessageInsight[]
+  threadInsights    ThreadInsight[]
 
   @@unique([projectId, provider])
   @@index([projectId, status])
@@ -856,6 +887,87 @@ model ProviderWebhookEvent {
   @@index([provider, receivedAt(sort: Desc)])
   @@index([projectId, status])
   @@map("provider_webhook_events")
+}
+
+model MessageInsight {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  projectId            String                 @map("project_id") @db.Uuid
+  connectorId          String                 @map("connector_id") @db.Uuid
+  provider             CommunicationProvider
+  messageId            String                 @map("message_id") @db.Uuid
+  threadId             String                 @map("thread_id") @db.Uuid
+  bodyHash             String                 @map("body_hash")
+  insightType          MessageInsightType     @map("insight_type")
+  status               MessageInsightStatus   @default(detected)
+  summary              String
+  confidence           Decimal                @db.Decimal(4, 3)
+  shouldCreateProposal Boolean                @default(false) @map("should_create_proposal")
+  shouldCreateDecision Boolean                @default(false) @map("should_create_decision")
+  proposalType         ProposalType?          @map("proposal_type")
+  affectedRefsJson     Json?                  @map("affected_refs_json")
+  evidenceJson         Json?                  @map("evidence_json")
+  oldUnderstandingJson Json?                  @map("old_understanding_json")
+  newUnderstandingJson Json?                  @map("new_understanding_json")
+  decisionStatement    String?                @map("decision_statement")
+  impactSummaryJson    Json?                  @map("impact_summary_json")
+  uncertaintyJson      Json?                  @map("uncertainty_json")
+  modelJson            Json?                  @map("model_json")
+  generatedProposalId  String?                @map("generated_proposal_id") @db.Uuid
+  generatedDecisionId  String?                @map("generated_decision_id") @db.Uuid
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project              Project                @relation(fields: [projectId], references: [id])
+  connector            CommunicationConnector @relation(fields: [connectorId], references: [id])
+  message              CommunicationMessage   @relation(fields: [messageId], references: [id])
+  thread               CommunicationThread    @relation(fields: [threadId], references: [id])
+  generatedProposal    SpecChangeProposal?    @relation("generated_message_insights", fields: [generatedProposalId], references: [id])
+  generatedDecision    DecisionRecord?        @relation("generated_message_insights", fields: [generatedDecisionId], references: [id])
+
+  @@unique([messageId, bodyHash])
+  @@index([projectId, insightType, status])
+  @@index([projectId, status, createdAt(sort: Desc)])
+  @@index([threadId, createdAt(sort: Desc)])
+  @@map("message_insights")
+}
+
+model ThreadInsight {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  projectId            String                 @map("project_id") @db.Uuid
+  connectorId          String                 @map("connector_id") @db.Uuid
+  provider             CommunicationProvider
+  threadId             String                 @map("thread_id") @db.Uuid
+  threadStateHash      String                 @map("thread_state_hash")
+  insightType          MessageInsightType     @map("insight_type")
+  status               MessageInsightStatus   @default(detected)
+  summary              String
+  confidence           Decimal                @db.Decimal(4, 3)
+  shouldCreateProposal Boolean                @default(false) @map("should_create_proposal")
+  shouldCreateDecision Boolean                @default(false) @map("should_create_decision")
+  proposalType         ProposalType?          @map("proposal_type")
+  sourceMessageIdsJson Json                   @map("source_message_ids_json")
+  affectedRefsJson     Json?                  @map("affected_refs_json")
+  evidenceJson         Json?                  @map("evidence_json")
+  oldUnderstandingJson Json?                  @map("old_understanding_json")
+  newUnderstandingJson Json?                  @map("new_understanding_json")
+  decisionStatement    String?                @map("decision_statement")
+  impactSummaryJson    Json?                  @map("impact_summary_json")
+  uncertaintyJson      Json?                  @map("uncertainty_json")
+  modelJson            Json?                  @map("model_json")
+  generatedProposalId  String?                @map("generated_proposal_id") @db.Uuid
+  generatedDecisionId  String?                @map("generated_decision_id") @db.Uuid
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project              Project                @relation(fields: [projectId], references: [id])
+  connector            CommunicationConnector @relation(fields: [connectorId], references: [id])
+  thread               CommunicationThread    @relation(fields: [threadId], references: [id])
+  generatedProposal    SpecChangeProposal?    @relation("generated_thread_insights", fields: [generatedProposalId], references: [id])
+  generatedDecision    DecisionRecord?        @relation("generated_thread_insights", fields: [generatedDecisionId], references: [id])
+
+  @@unique([threadId, threadStateHash])
+  @@index([projectId, insightType, status])
+  @@index([projectId, status, createdAt(sort: Desc)])
+  @@index([threadId, createdAt(sort: Desc)])
+  @@map("thread_insights")
 }
 
 model AuditEvent {

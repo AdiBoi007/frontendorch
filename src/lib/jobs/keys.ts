@@ -32,6 +32,15 @@ export const jobKeys = {
   indexCommunicationMessage(messageId: string, bodyHash: string) {
     return `index-message:${messageId}:${bodyHash}`;
   },
+  classifyMessageInsight(messageId: string, bodyHash: string) {
+    return `classify-message:${messageId}:${bodyHash}`;
+  },
+  classifyThreadInsight(threadId: string, threadStateHash: string) {
+    return `classify-thread:${threadId}:${threadStateHash}`;
+  },
+  generateChangeProposalFromInsight(insightId: string) {
+    return `proposal-from-insight:${insightId}`;
+  },
   refreshDashboardSnapshot(scope: "general" | "project", targetId: string, signature: string) {
     return `dashboard:${scope}:${targetId}:${signature}`;
   }

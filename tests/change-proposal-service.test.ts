@@ -186,4 +186,60 @@ describe("ChangeProposalService", () => {
     });
     expect(brainService.generateProductBrain).not.toHaveBeenCalled();
   });
+
+  it("accepts an existing open decision candidate instead of creating a second decision record", async () => {
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const tx = {
+      decisionRecord: {
+        update: vi.fn().mockResolvedValue({ id: "decision-open-1" }),
+        create: vi.fn()
+      },
+      specChangeProposal: {
+        update: vi.fn().mockResolvedValue(undefined)
+      }
+    };
+
+    const prisma = {
+      project: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: "project-1", orgId: "org-1" })
+      },
+      specChangeProposal: {
+        findFirstOrThrow: vi.fn().mockResolvedValue({
+          id: "proposal-2",
+          projectId: "project-1",
+          proposalType: "decision_change",
+          status: "needs_review",
+          sourceMessageCount: 1,
+          externalEvidenceRefsJson: [],
+          decisionRecordId: "decision-open-1",
+          links: [{ linkType: "document_section" }, { linkType: "brain_node" }]
+        })
+      },
+      $transaction: vi.fn(async (callback) => callback(tx)),
+      jobRun: {
+        upsert: vi.fn().mockResolvedValue(undefined)
+      }
+    } as any;
+
+    const service = new ChangeProposalService(
+      prisma,
+      { enqueue } as any,
+      { ensureProjectManager: vi.fn().mockResolvedValue(undefined), ensureProjectAccess: vi.fn() } as any,
+      {} as any,
+      { record: vi.fn() } as any
+    );
+
+    await service.accept("project-1", "proposal-2", "manager-1");
+
+    expect(tx.decisionRecord.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "decision-open-1" },
+        data: expect.objectContaining({
+          status: "accepted",
+          acceptedBy: "manager-1"
+        })
+      })
+    );
+    expect(tx.decisionRecord.create).not.toHaveBeenCalled();
+  });
 });

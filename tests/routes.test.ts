@@ -213,6 +213,43 @@ function createContext() {
         openTargets: { thread: { targetType: "thread", targetRef: { threadId: "thread-1" } }, documents: [] }
       }))
     },
+    messageInsights: {
+      list: vi.fn(async () => ({
+        items: [
+          {
+            id: "insight-1",
+            messageId: "msg-1",
+            threadId: "thread-1",
+            insightType: "requirement_change",
+            status: "detected",
+            confidence: 0.88
+          }
+        ],
+        meta: { limit: 25, nextCursor: null, hasMore: false }
+      })),
+      get: vi.fn(async () => ({
+        id: "insight-1",
+        messageId: "msg-1",
+        threadId: "thread-1",
+        insightType: "requirement_change",
+        status: "detected",
+        confidence: 0.88
+      })),
+      ignore: vi.fn(async () => ({ id: "insight-1", status: "ignored" })),
+      createProposal: vi.fn(async () => ({ insightId: "insight-1", proposalId: "proposal-1", decisionId: null, deduped: false })),
+      classifyMessage: vi.fn(async () => ({ id: "insight-1", messageId: "msg-1", insightType: "requirement_change", status: "detected" })),
+      runClassificationJob: vi.fn(async () => undefined),
+      getReviewQueue: vi.fn(async () => ({
+        pendingInsights: [{ id: "insight-1", messageId: "msg-1" }],
+        generatedProposals: [{ proposalId: "proposal-1" }],
+        generatedDecisionCandidates: []
+      }))
+    },
+    threadInsights: {
+      classifyThread: vi.fn(async () => ({ id: "thread-insight-1", threadId: "thread-1", insightType: "decision", status: "detected" })),
+      runClassificationJob: vi.fn(async () => undefined),
+      createProposal: vi.fn(async () => ({ proposalId: "proposal-1" }))
+    },
     indexing: {
       runIndexJob: vi.fn(async () => undefined),
       indexCommunicationMessage: vi.fn(async () => ({ indexed: true, chunkCount: 1 }))
@@ -674,5 +711,65 @@ describe("route contracts", () => {
     });
 
     expect(clientTimelineResponse.statusCode).toBe(403);
+  });
+
+  it("supports communication insight and review routes with manager-only actions", async () => {
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/message-insights?limit=10",
+      headers: {
+        authorization: `Bearer ${createToken("dev")}`
+      }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.messageInsights.list).toHaveBeenCalled();
+
+    const reviewResponse = await app.inject({
+      method: "GET",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/communication-review",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(reviewResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.messageInsights.getReviewQueue).toHaveBeenCalled();
+
+    const classifyResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/messages/3322717f-2c10-4239-b525-6fbc9158f4fb/classify",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(classifyResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.messageInsights.classifyMessage).toHaveBeenCalled();
+
+    const createProposalResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/message-insights/3322717f-2c10-4239-b525-6fbc9158f4fb/create-proposal",
+      headers: {
+        authorization: `Bearer ${createToken("manager")}`
+      }
+    });
+
+    expect(createProposalResponse.statusCode).toBe(200);
+    expect(context.services.communicationsService.messageInsights.createProposal).toHaveBeenCalled();
+
+    vi.mocked(context.services.communicationsService.messageInsights.ignore).mockRejectedValueOnce(
+      new AppError(403, "Manager access required", "manager_access_required")
+    );
+
+    const devIgnoreResponse = await app.inject({
+      method: "POST",
+      url: "/v1/projects/37e6d602-cc1b-4cc9-bc6c-5547241fbf90/message-insights/3322717f-2c10-4239-b525-6fbc9158f4fb/ignore",
+      headers: {
+        authorization: `Bearer ${createToken("dev")}`
+      }
+    });
+
+    expect(devIgnoreResponse.statusCode).toBe(403);
   });
 });
