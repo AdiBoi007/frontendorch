@@ -1,11 +1,13 @@
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 import { AppShell } from "./components/shell/AppShell";
+import { SocratesPanel } from "./components/shell/SocratesPanel";
 import { LoginPage } from "./pages/LoginPage";
 import { LiveDocPage } from "./pages/LiveDocPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LiveDocViewerPage } from "./pages/LiveDocViewerPage";
 import { ProjectBrainPage } from "./pages/ProjectBrainPage";
 import { ProjectMemoryPage } from "./pages/ProjectDocsPage";
+import { ProjectDashboardPage } from "./pages/ProjectDashboardPage";
 import { ProjectFlowchartPage } from "./pages/ProjectFlowchartPage";
 import { ProjectRequestsPage } from "./pages/ProjectRequestsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -18,18 +20,23 @@ function hasRole() {
   return Boolean(window.localStorage.getItem("orchestra_role"));
 }
 
-function ProtectedShellRoute() {
+function ProtectedRoute() {
   if (!hasRole()) {
     return <Navigate to="/" replace />;
   }
 
-  return <AppShell />;
+  return <Outlet />;
 }
 
-function ProjectLandingRedirect() {
-  const { id = "1" } = useParams();
-
-  return <Navigate to={`/projects/${id}/brain`} replace />;
+function DashboardWithSocratesRoute() {
+  return (
+    <div className="flex h-screen overflow-hidden bg-bg">
+      <SocratesPanel />
+      <main className="min-w-0 flex-1 overflow-hidden bg-bg">
+        <DashboardPage />
+      </main>
+    </div>
+  );
 }
 
 function ProjectMemoryRedirect() {
@@ -42,17 +49,19 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<LoginPage />} />
-      <Route element={<ProtectedShellRoute />}>
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/projects/:id" element={<ProjectLandingRedirect />} />
-        <Route path="/projects/:id/brain" element={<ProjectBrainPage />} />
-        <Route path="/projects/:id/flow" element={<ProjectFlowchartPage />} />
-        <Route path="/projects/:id/live-doc" element={<LiveDocPage />} />
-        <Route path="/projects/:id/memory" element={<ProjectMemoryPage />} />
-        <Route path="/projects/:id/docs" element={<ProjectMemoryRedirect />} />
-        <Route path="/projects/:id/docs/:docId/view" element={<LiveDocViewerPage />} />
-        <Route path="/projects/:id/requests" element={<ProjectRequestsPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard" element={<DashboardWithSocratesRoute />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/projects/:id" element={<AppShell />}>
+          <Route index element={<ProjectDashboardPage />} />
+          <Route path="brain" element={<ProjectBrainPage />} />
+          <Route path="flow" element={<ProjectFlowchartPage />} />
+          <Route path="live-doc" element={<LiveDocPage />} />
+          <Route path="memory" element={<ProjectMemoryPage />} />
+          <Route path="docs" element={<ProjectMemoryRedirect />} />
+          <Route path="docs/:docId/view" element={<LiveDocViewerPage />} />
+          <Route path="requests" element={<ProjectRequestsPage />} />
+        </Route>
       </Route>
     </Routes>
   );

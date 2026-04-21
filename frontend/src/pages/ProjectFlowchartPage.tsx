@@ -2,12 +2,20 @@ import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type WheelEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  AlertCircleIcon,
+  ArrowLeftIcon,
   CheckSquareIcon,
+  CloseIcon,
   FileTextIcon,
   GitBranchIcon,
+  GripHorizontalIcon,
   Grid2x2Icon,
-  MessageSquareIcon,
-  SparklesIcon
+  LockIcon,
+  LockOpenIcon,
+  MaximizeIcon,
+  SparklesIcon,
+  ZoomInIcon,
+  ZoomOutIcon
 } from "../components/ui/AppIcons";
 import { getFlowGraph, getProjects } from "../lib/api";
 import type { FlowEdge, FlowGraph, FlowNode } from "../lib/types";
@@ -165,7 +173,7 @@ function getNodeIcon(type: FlowNode["type"], className = "h-4 w-4") {
     return <CheckSquareIcon className={className} />;
   }
 
-  return <MessageSquareIcon className={className} />;
+  return <AlertCircleIcon className={className} />;
 }
 
 function getBezierMidpoint(
@@ -383,9 +391,9 @@ export function ProjectFlowchartPage() {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="font-syne text-[13px] text-[#888888] transition-colors hover:text-[#0a0a0a]"
+            className="text-[#888888] transition-colors hover:text-[#0a0a0a]"
           >
-            ←
+            <ArrowLeftIcon className="h-4 w-4" />
           </button>
           <span className="mx-4 h-4 w-px bg-[#e5e5e0]" />
           <p className="truncate font-bebas text-[15px] text-[#0a0a0a]">{projectName.toUpperCase()}</p>
@@ -567,7 +575,10 @@ export function ProjectFlowchartPage() {
                       ) : null}
                     </div>
 
-                    <p className="mt-3 font-mono text-[9px] tracking-[0.16em] text-[#bbbbbb]">⊕ DRAG NODE</p>
+                    <p className="mt-3 inline-flex items-center gap-1.5 font-mono text-[9px] tracking-[0.16em] text-[#bbbbbb]">
+                      <GripHorizontalIcon className="h-3 w-3" />
+                      DRAG NODE
+                    </p>
                   </div>
                 </motion.div>
               );
@@ -580,10 +591,10 @@ export function ProjectFlowchartPage() {
           onMouseDown={(event) => event.stopPropagation()}
         >
           {[
-            { key: "zoom-in", label: "+", onClick: () => setZoom((current) => clamp(current + 0.2, 0.5, 2)) },
-            { key: "zoom-out", label: "-", onClick: () => setZoom((current) => clamp(current - 0.2, 0.5, 2)) },
-            { key: "fit", label: "⊡", onClick: handleFitView },
-            { key: "lock", label: dragLocked ? "🔒" : "🔓", onClick: () => setDragLocked((current) => !current) }
+            { key: "zoom-in", icon: <ZoomInIcon className="h-[18px] w-[18px]" />, onClick: () => setZoom((current) => clamp(current + 0.2, 0.5, 2)) },
+            { key: "zoom-out", icon: <ZoomOutIcon className="h-[18px] w-[18px]" />, onClick: () => setZoom((current) => clamp(current - 0.2, 0.5, 2)) },
+            { key: "fit", icon: <MaximizeIcon className="h-[18px] w-[18px]" />, onClick: handleFitView },
+            { key: "lock", icon: dragLocked ? <LockIcon className="h-[18px] w-[18px]" /> : <LockOpenIcon className="h-[18px] w-[18px]" />, onClick: () => setDragLocked((current) => !current) }
           ].map((control, index, array) => (
             <button
               key={control.key}
@@ -592,7 +603,7 @@ export function ProjectFlowchartPage() {
               className="flex h-10 w-10 items-center justify-center font-syne text-[18px] text-[#555555] transition-colors hover:bg-[#f5f5f2]"
               style={{ borderBottom: index === array.length - 1 ? "none" : "1px solid #f0f0ec" }}
             >
-              {control.label}
+              {control.icon}
             </button>
           ))}
         </div>
@@ -657,9 +668,9 @@ export function ProjectFlowchartPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedNodeId(null)}
-                    className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f5f2] font-syne text-[16px] text-[#888888] transition-colors hover:bg-[#e5e5e0]"
+                    className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f5f2] text-[#888888] transition-colors hover:bg-[#e5e5e0]"
                   >
-                    ×
+                    <CloseIcon className="h-4 w-4" />
                   </button>
                 </div>
 

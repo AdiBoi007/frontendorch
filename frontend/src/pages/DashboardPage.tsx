@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { CalendarCard } from "../components/dashboard/CalendarCard";
+import Avatar from "../components/ui/Avatar";
+import { ArrowRightIcon, PlusIcon } from "../components/ui/AppIcons";
 import { Badge } from "../components/ui/Badge";
 import { mockCalendarEvents, mockProjects } from "../lib/mockData";
 import type { ProjectCardItem } from "../lib/types";
@@ -128,12 +130,9 @@ function TeamHeadcountCard() {
                   variants={avatarItemVariants}
                   whileHover={{ scale: 1.15, zIndex: 10 }}
                   title={`${member.name} · ${style.label}`}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-white shadow-[0_2px_8px_rgba(0,0,0,0.1)]"
-                  style={{ backgroundColor: style.background }}
+                  className="relative"
                 >
-                  <span className="font-bebas text-[14px] leading-none" style={{ color: style.color }}>
-                    {member.initials}
-                  </span>
+                  <Avatar seed={member.initials} name={member.name} role={style.label} />
                 </motion.div>
               );
             })}
@@ -144,7 +143,7 @@ function TeamHeadcountCard() {
                 type="button"
                 className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-[#d0d0cc] bg-transparent font-syne text-[18px] leading-none text-[#cccccc] transition-colors hover:border-[#00b4a0] hover:text-[#00b4a0]"
               >
-                +
+                <PlusIcon className="h-[18px] w-[18px]" />
               </button>
             ))}
           </motion.div>
@@ -165,7 +164,7 @@ function TeamHeadcountCard() {
             </div>
           </div>
 
-          <div>
+          <div className="lg:ml-2">
             <div className="flex h-2 w-[200px] overflow-hidden rounded-full">
               {teamSplit.map((item) => (
                 <span key={item.label} style={{ width: item.width, backgroundColor: item.color }} />
@@ -192,7 +191,12 @@ export function DashboardPage() {
   const projects = mockProjects;
 
   return (
-    <motion.div initial="hidden" animate="visible" variants={pageVariants} className="h-full overflow-y-auto bg-bg px-10 pb-10 pl-8 pt-10">
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={pageVariants}
+      className="h-full overflow-y-auto bg-bg px-10 pb-10 pl-8 pt-10"
+    >
       <motion.section variants={childVariants} className="mb-10">
         <motion.header className="flex items-start justify-between gap-6">
           <div>
@@ -225,7 +229,7 @@ export function DashboardPage() {
               <motion.button
                 key={project.id}
                 type="button"
-                onClick={() => navigate(`/projects/${project.id}/brain`)}
+                onClick={() => navigate(`/projects/${project.id}`)}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
@@ -258,7 +262,9 @@ export function DashboardPage() {
 
                 <div className="mt-4 flex items-center">
                   <p className="font-mono text-[13px] text-[#888888]">{project.progress}%</p>
-                  <span className="ml-auto font-syne text-[18px] text-[#00b4a0]">→</span>
+                  <span className="ml-auto text-[#00b4a0]">
+                    <ArrowRightIcon className="h-[18px] w-[18px]" />
+                  </span>
                 </div>
               </motion.button>
             );

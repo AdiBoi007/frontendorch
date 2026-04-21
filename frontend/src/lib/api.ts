@@ -3,7 +3,17 @@
 // AUTH = Authorization: Bearer localStorage.getItem("orchestra_token")
 
 import * as mock from "./mockData";
-import type { AnchorProvenance, ChatMessage, Doc, DocViewerPayload, FlowGraph, LiveDocPayload, RoleOption } from "./types";
+import type {
+  AnchorProvenance,
+  ChatMessage,
+  Doc,
+  DocViewerPayload,
+  FlowGraph,
+  LiveDocPayload,
+  ProjectDetail,
+  ProjectMember,
+  RoleOption
+} from "./types";
 
 export const getProjects = async () => mock.mockProjects;
 export const getDeadlines = async () => mock.mockDeadlines;
@@ -16,6 +26,18 @@ export const getLoginRoles = async (): Promise<RoleOption[]> => mock.mockRoles;
 export const getSocratesSuggestions = async (page: "dashboard" | "project") => mock.mockSocratesSuggestions[page];
 export const getSocratesReply = async (page: "dashboard" | "project") => mock.mockSocratesReplies[page];
 export const getSocratesMessages = async (): Promise<ChatMessage[]> => mock.mockSocratesMessages;
+
+// TODO: GET /v1/projects/:projectId
+export const getProjectDetail = async (projectId: string): Promise<ProjectDetail> => {
+  void projectId;
+  return mock.mockProjectDetail;
+};
+
+// TODO: GET /v1/projects/:projectId/members
+export const getProjectMembers = async (projectId: string): Promise<ProjectMember[]> => {
+  void projectId;
+  return mock.mockProjectDetail.team;
+};
 
 // TODO: replace with GET /v1/projects/:projectId/documents
 export const getDocs = async (projectId: string): Promise<Doc[]> => {

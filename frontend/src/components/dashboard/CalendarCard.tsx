@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useState } from "react";
+import { ArrowLeftIcon, ArrowRightIcon } from "../ui/AppIcons";
 import type { CalendarDayData, DeadlineItem, MeetingItem } from "../../lib/types";
 
 type CalendarCardProps = {
@@ -176,12 +177,12 @@ export function CalendarCard({ eventsByDate }: CalendarCardProps) {
       <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
         <div className="min-w-0">
           <div className="mb-5 flex items-center justify-between">
-            <button type="button" className="font-syne text-[14px] text-[#888888]">
-              &lt;
+            <button type="button" className="text-[#888888]">
+              <ArrowLeftIcon className="h-4 w-4" />
             </button>
             <p className="font-bebas text-[18px] tracking-[0.04em] text-[#0a0a0a]">{monthLabel}</p>
-            <button type="button" className="font-syne text-[14px] text-[#888888]">
-              &gt;
+            <button type="button" className="text-[#888888]">
+              <ArrowRightIcon className="h-4 w-4" />
             </button>
           </div>
 

@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FileTextIcon } from "../components/ui/AppIcons";
+import { ArrowLeftIcon, CloseIcon, FileTextIcon } from "../components/ui/AppIcons";
 import { getAnchorProvenance, getDocViewer, getProjects } from "../lib/api";
 import type { AnchorProvenance, DocSection, DocViewerPayload } from "../lib/types";
 
@@ -304,9 +304,9 @@ export function LiveDocViewerPage() {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="font-syne text-[13px] text-[#888888] transition-colors hover:text-[#0a0a0a]"
+            className="text-[#888888] transition-colors hover:text-[#0a0a0a]"
           >
-            ←
+            <ArrowLeftIcon className="h-4 w-4" />
           </button>
           <span className="h-4 w-px bg-[#e5e5e0]" />
           <p className="truncate font-bebas text-[15px] text-[#0a0a0a]">{projectName.toUpperCase()}</p>
@@ -410,9 +410,9 @@ export function LiveDocViewerPage() {
               <button
                 type="button"
                 onClick={() => setSelectedAnchor(null)}
-                className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f5f2] font-syne text-[16px] text-[#888888] transition-colors hover:bg-[#e5e5e0]"
+                className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f5f2] text-[#888888] transition-colors hover:bg-[#e5e5e0]"
               >
-                ×
+                <CloseIcon className="h-4 w-4" />
               </button>
             </div>
 

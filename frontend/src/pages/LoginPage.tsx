@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ArrowRightIcon, CodeIcon, EyeIcon, UserIcon } from "../components/ui/AppIcons";
 import { getLoginRoles } from "../lib/api";
 import type { RoleOption } from "../lib/types";
 
@@ -31,60 +32,10 @@ const itemVariants = {
   }
 };
 
-function BriefcaseIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none">
-      <path
-        d="M7.5 7.5h9m-11 3h13m-12 0V8.4c0-.8.6-1.4 1.4-1.4h1.8c.2-1.7 1.5-3 3.3-3s3.1 1.3 3.3 3h1.8c.8 0 1.4.6 1.4 1.4v8.8c0 .8-.6 1.4-1.4 1.4H7.9c-.8 0-1.4-.6-1.4-1.4V10.5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M10 7a2 2 0 0 1 4 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CodeIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none">
-      <path
-        d="M8.2 8 4.5 12l3.7 4M15.8 8l3.7 4-3.7 4M13.3 5.5 10.7 18.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none">
-      <path
-        d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 14.7a2.7 2.7 0 1 0 0-5.4 2.7 2.7 0 0 0 0 5.4Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 const iconByRole: Record<RoleOption["icon"], JSX.Element> = {
-  briefcase: <BriefcaseIcon />,
-  code: <CodeIcon />,
-  eye: <EyeIcon />
+  briefcase: <UserIcon className="h-[18px] w-[18px]" />,
+  code: <CodeIcon className="h-[18px] w-[18px]" />,
+  eye: <EyeIcon className="h-[18px] w-[18px]" />
 };
 
 export function LoginPage() {
@@ -142,8 +93,8 @@ export function LoginPage() {
               >
                 <span className="flex w-8 items-center justify-start text-teal">{iconByRole[role.icon]}</span>
                 <span className="font-bebas text-[18px] tracking-[0.06em] text-[#0a0a0a]">{role.label}</span>
-                <span className="w-8 text-right font-syne text-[18px] text-[#cccccc] transition-colors duration-200 group-hover:text-teal">
-                  →
+                <span className="flex w-8 justify-end text-[#cccccc] transition-colors duration-200 group-hover:text-teal">
+                  <ArrowRightIcon className="h-[18px] w-[18px]" />
                 </span>
               </motion.button>
             ))}

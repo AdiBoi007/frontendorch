@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FileTextIcon, SearchIcon, UploadCloudIcon } from "../components/ui/AppIcons";
+import { FileTextIcon, SearchIcon, UploadCloudIcon, UploadIcon } from "../components/ui/AppIcons";
 import { getDocs, uploadDoc } from "../lib/api";
 import type { Doc } from "../lib/types";
 
@@ -327,13 +327,14 @@ export function ProjectMemoryPage() {
       <motion.button
         type="button"
         onClick={() => setIsUploadOpen(true)}
-        whileHover={{ scale: 1.04, backgroundColor: "#00b4a0" }}
-        whileTap={{ scale: 0.98 }}
-        className="fixed bottom-8 z-20 rounded-full bg-[#0a0a0a] px-6 py-[14px] font-bebas text-[14px] tracking-[0.08em] text-white shadow-[0_8px_32px_rgba(0,0,0,0.2)]"
-        style={{ right: "340px" }}
-      >
-        ＋ UPLOAD
-      </motion.button>
+      whileHover={{ scale: 1.04, backgroundColor: "#00b4a0" }}
+      whileTap={{ scale: 0.98 }}
+      className="fixed bottom-8 z-20 inline-flex items-center gap-2 rounded-full bg-[#0a0a0a] px-6 py-[14px] font-bebas text-[14px] tracking-[0.08em] text-white shadow-[0_8px_32px_rgba(0,0,0,0.2)]"
+      style={{ right: "340px" }}
+    >
+      <UploadIcon className="h-4 w-4" />
+      UPLOAD
+    </motion.button>
 
       <AnimatePresence>
         {isUploadOpen ? (

@@ -1,7 +1,20 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckSquareIcon, FileTextIcon, GitBranchIcon, MessageSquareIcon, UsersIcon } from "../components/ui/AppIcons";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CheckSquareIcon,
+  CheckboxIcon,
+  CloseIcon,
+  CodeIcon,
+  FileIcon,
+  FileTextIcon,
+  GitBranchIcon,
+  GitPullRequestIcon,
+  MessageSquareIcon,
+  UsersIcon
+} from "../components/ui/AppIcons";
 import { mockProjectBrains, mockProjects } from "../lib/mockData";
 import type { BrainCategoryId, BrainDetailItem, BrainIconKey, BrainNodeData } from "../lib/types";
 
@@ -45,13 +58,13 @@ const subNodeSpring = {
 } as const;
 
 const uploadTypeOptions = [
-  { id: "prd", label: "PRD", emoji: "📄" },
-  { id: "srs", label: "SRS", emoji: "📋" },
-  { id: "tech-spec", label: "Tech Spec", emoji: "🔧" },
-  { id: "communication", label: "Communication", emoji: "💬" },
-  { id: "decision", label: "Decision", emoji: "✅" },
-  { id: "change-request", label: "Change Request", emoji: "⚠️" }
-] as const satisfies ReadonlyArray<{ id: UploadTypeId; label: string; emoji: string }>;
+  { id: "prd", label: "PRD", icon: FileIcon },
+  { id: "srs", label: "SRS", icon: FileTextIcon },
+  { id: "tech-spec", label: "Tech Spec", icon: CodeIcon },
+  { id: "communication", label: "Communication", icon: MessageSquareIcon },
+  { id: "decision", label: "Decision", icon: CheckboxIcon },
+  { id: "change-request", label: "Change Request", icon: GitPullRequestIcon }
+] as const;
 
 const uploadCategoryMap: Record<UploadTypeId, BrainCategoryId> = {
   prd: "docs",
@@ -118,7 +131,7 @@ const categoryVisuals: Record<
     tint: "#fff0f0",
     border: "rgba(224,85,85,0.2)",
     text: "#c02020",
-    icon: "git-branch",
+    icon: "git-pull-request",
     typeLabel: "CHANGE"
   },
   decisions: {
@@ -205,6 +218,10 @@ function getIcon(icon: BrainIconKey | undefined, className = "h-5 w-5") {
 
   if (icon === "git-branch") {
     return <GitBranchIcon className={className} />;
+  }
+
+  if (icon === "git-pull-request") {
+    return <GitPullRequestIcon className={className} />;
   }
 
   if (icon === "check-square") {
@@ -365,6 +382,7 @@ export function ProjectBrainPage() {
   const { id = "1" } = useParams();
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragDistanceRef = useRef<Record<string, number>>({});
+  const hasAnimated = useRef(false);
 
   const project = mockProjects.find((item) => item.id === id) ?? mockProjects[0];
   const brainSeed = mockProjectBrains[id] ?? mockProjectBrains["1"];
@@ -435,6 +453,10 @@ export function ProjectBrainPage() {
       window.clearTimeout(timeoutId);
     };
   }, [animationKey]);
+
+  useEffect(() => {
+    hasAnimated.current = true;
+  }, []);
 
   const edges = useMemo(() => {
     const coreNode = nodes.find((node) => node.kind === "core");
@@ -672,9 +694,9 @@ export function ProjectBrainPage() {
           <button
             type="button"
             onClick={() => navigate("/dashboard")}
-            className="font-syne text-[13px] text-[#888888] transition-colors hover:text-[#0a0a0a]"
+            className="text-[#888888] transition-colors hover:text-[#0a0a0a]"
           >
-            ←
+            <ArrowLeftIcon className="h-4 w-4" />
           </button>
           <span className="mx-4 h-4 w-px bg-[#e5e5e0]" />
           <p className="font-bebas text-[15px] text-[#0a0a0a]">{project.name.toUpperCase()}</p>
@@ -700,7 +722,7 @@ export function ProjectBrainPage() {
           <button
             type="button"
             onClick={resetBrainView}
-            className="rounded-xl bg-[#0a0a0a] px-[14px] py-[7px] font-bebas text-[12px] tracking-[0.08em] text-white transition-colors hover:bg-[#00b4a0]"
+            className="rounded-xl border border-[rgba(255,255,255,0.78)] bg-[linear-gradient(135deg,rgba(244,242,252,0.94),rgba(232,250,246,0.92))] px-[14px] py-[7px] font-bebas text-[12px] tracking-[0.08em] text-[#38524d] shadow-[0_10px_24px_rgba(139,127,212,0.1)] backdrop-blur-[16px] transition-all hover:border-[rgba(0,180,160,0.28)] hover:text-[#00b4a0]"
           >
             REBUILD
           </button>
@@ -718,7 +740,7 @@ export function ProjectBrainPage() {
       >
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(0,180,160,0.06)_0%,transparent_70%)]" />
 
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }} className="absolute inset-0">
+        <motion.div initial={hasAnimated.current ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: hasAnimated.current ? 0 : 0.3 }} className="absolute inset-0">
           <motion.div
             key={animationKey}
             animate={{ scale: zoom }}
@@ -745,7 +767,7 @@ export function ProjectBrainPage() {
                   edge.kind === "core" ? hexToRgba("#00b4a0", highlighted ? 1 : 0.2) : highlighted ? hexToRgba("#0a0a0a", 1) : "rgba(0,0,0,0.06)";
                 const strokeWidth = edge.kind === "core" ? 1.5 : 1;
                 const isFreshEdge = freshEdgeIds.includes(edge.id);
-                const shouldDraw = edge.kind === "core" || isFreshEdge;
+                const shouldDraw = isFreshEdge || (!hasAnimated.current && edge.kind === "core");
                 const drawDelay = edge.kind === "core" ? edge.order * 0.08 : 0;
 
                 return (
@@ -824,20 +846,20 @@ export function ProjectBrainPage() {
                 return null;
               }
 
-              const initial =
-                isCore
+              const shouldAnimateEntrance = isFreshNode || !hasAnimated.current;
+              const initial = shouldAnimateEntrance
+                ? isCore
                   ? { scale: 0, opacity: 0 }
                   : isCategory
                     ? { scale: 0, opacity: 0 }
-                    : { scale: isFreshNode ? 0 : 0.8, opacity: 0 };
+                    : { scale: isFreshNode ? 0 : 0.8, opacity: 0 }
+                : false;
 
-              const animate =
-                isCore
-                  ? { scale: [0, 1.05, 1], opacity: [0, 1, 1] }
-                  : { scale: 1, opacity: 1 };
+              const animate = shouldAnimateEntrance && isCore ? { scale: [0, 1.05, 1], opacity: [0, 1, 1] } : { scale: 1, opacity: 1 };
 
-              const transition =
-                isCore
+              const transition = !shouldAnimateEntrance
+                ? { duration: 0 }
+                : isCore
                   ? {
                       scale: { duration: 0.5, delay: 0.2, times: [0, 0.7, 1], ...nodeEnterTransition },
                       opacity: { duration: 0.3, delay: 0.2, ...nodeEnterTransition }
@@ -972,9 +994,9 @@ export function ProjectBrainPage() {
                   <button
                     type="button"
                     onClick={() => setActiveCategoryId(null)}
-                    className="ml-auto font-syne text-[18px] text-[#888888] transition-colors hover:text-[#0a0a0a]"
+                    className="ml-auto text-[#888888] transition-colors hover:text-[#0a0a0a]"
                   >
-                    ×
+                    <CloseIcon className="h-4 w-4" />
                   </button>
                 </div>
 
@@ -1013,7 +1035,10 @@ export function ProjectBrainPage() {
                           >
                             {activeCategoryVisual.typeLabel}
                           </span>
-                          <span className="ml-auto font-syne text-[11px] text-[#888888]">View →</span>
+                          <span className="ml-auto inline-flex items-center gap-1 font-syne text-[11px] text-[#888888]">
+                            View
+                            <ArrowRightIcon className="h-[12px] w-[12px]" />
+                          </span>
                         </div>
                       </motion.button>
                     );
@@ -1061,9 +1086,9 @@ export function ProjectBrainPage() {
                     {uploadTypeOptions.map((option) => {
                       const selected = selectedUploadType === option.id;
 
-                      return (
-                        <button
-                          key={option.id}
+                    return (
+                      <button
+                        key={option.id}
                           type="button"
                           onClick={() => setSelectedUploadType(option.id)}
                           className={[
@@ -1073,7 +1098,7 @@ export function ProjectBrainPage() {
                               : "border-[#e5e5e0] hover:border-[#00b4a0]"
                           ].join(" ")}
                         >
-                          <span className="text-[18px] leading-none">{option.emoji}</span>
+                          <option.icon className="h-[18px] w-[18px]" />
                           <span className="font-syne text-[13px] text-[#333333]">{option.label}</span>
                         </button>
                       );

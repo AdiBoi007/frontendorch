@@ -38,6 +38,47 @@ export interface ProjectCardItem {
   color: string;
 }
 
+export interface ProjectMember {
+  initials: string;
+  name: string;
+  role: "manager" | "dev" | "client";
+}
+
+export interface ProjectSubscription {
+  id: string;
+  name: string;
+  category: string;
+  cost: number;
+  billing: "monthly" | "per-transaction";
+  status: "active";
+}
+
+export interface ProjectRecentChange {
+  id: string;
+  title: string;
+  status: "accepted" | "pending";
+  timeAgo: string;
+}
+
+export interface ProjectDetail {
+  id: string;
+  name: string;
+  health: "HEALTHY" | "AT RISK" | "CRITICAL";
+  progress: number;
+  description: string;
+  deadline: string;
+  sprint: string;
+  budget: number;
+  spent: number;
+  team: ProjectMember[];
+  openRoles: number;
+  subscriptions: ProjectSubscription[];
+  recentChanges: ProjectRecentChange[];
+  brainStatus: "ACTIVE";
+  docsCount: number;
+  docsReady: number;
+}
+
 export interface Doc {
   id: string;
   name: string;
@@ -153,7 +194,7 @@ export type BrainCategoryId = "docs" | "comms" | "team" | "changes" | "decisions
 
 export type BrainNodeKind = "core" | "category" | "sub";
 
-export type BrainIconKey = "file-text" | "message-square" | "users" | "git-branch" | "check-square";
+export type BrainIconKey = "file-text" | "message-square" | "users" | "git-branch" | "git-pull-request" | "check-square";
 
 export type BrainItemAction = "detail" | "navigate-docs" | "navigate-requests";
 

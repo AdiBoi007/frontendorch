@@ -12,6 +12,7 @@ import type {
   MeetingItem,
   ProjectBrainData,
   ProjectCardItem,
+  ProjectDetail,
   RequestItem,
   RoleOption,
   SocratesReplyGroups,
@@ -23,6 +24,44 @@ export const mockProjects: ProjectCardItem[] = [
   { id: "2", name: "Elara Games", progress: 38, health: "AT RISK", color: "#e0dbf5" },
   { id: "3", name: "API Gateway", progress: 79, health: "CRITICAL", color: "#fceee4" }
 ];
+
+export const mockProjectDetail: ProjectDetail = {
+  id: "1",
+  name: "BloomFast MVP",
+  health: "HEALTHY",
+  progress: 34,
+  description: "On-demand flower delivery marketplace. Buyer ordering, florist dashboard, driver assignment.",
+  deadline: "Jun 2026",
+  sprint: "2 of 8",
+  budget: 85000,
+  spent: 28900,
+  team: [
+    { initials: "SC", name: "Sarah Chen", role: "manager" },
+    { initials: "MT", name: "Marcus T", role: "dev" },
+    { initials: "PK", name: "Priya K", role: "dev" },
+    { initials: "JW", name: "James W", role: "dev" },
+    { initials: "AP", name: "Alex P", role: "dev" },
+    { initials: "LF", name: "Lisa F", role: "client" }
+  ],
+  openRoles: 2,
+  subscriptions: [
+    { id: "s1", name: "AWS (EC2 + RDS)", category: "Infrastructure", cost: 420, billing: "monthly", status: "active" },
+    { id: "s2", name: "Supabase Pro", category: "Database", cost: 25, billing: "monthly", status: "active" },
+    { id: "s3", name: "Stripe", category: "Payments", cost: 0, billing: "per-transaction", status: "active" },
+    { id: "s4", name: "Firebase", category: "Notifications", cost: 15, billing: "monthly", status: "active" },
+    { id: "s5", name: "Vercel Pro", category: "Hosting", cost: 20, billing: "monthly", status: "active" },
+    { id: "s6", name: "Sentry", category: "Monitoring", cost: 26, billing: "monthly", status: "active" }
+  ],
+  recentChanges: [
+    { id: "rc1", title: "Manager approval required for driver assignment", status: "accepted", timeAgo: "2d ago" },
+    { id: "rc2", title: "Pro subscription deferred to v2", status: "accepted", timeAgo: "3d ago" },
+    { id: "rc3", title: "OAuth removed from v1 scope", status: "accepted", timeAgo: "5d ago" },
+    { id: "rc4", title: "Promo code system requested", status: "pending", timeAgo: "2h ago" }
+  ],
+  brainStatus: "ACTIVE",
+  docsCount: 8,
+  docsReady: 6
+};
 
 export const mockDocs: Doc[] = [
   {

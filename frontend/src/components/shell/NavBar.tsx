@@ -1,12 +1,38 @@
 import { AnimatePresence, motion } from "framer-motion";
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FileTextIcon, GitBranchIcon, Grid2x2Icon, MessageSquareIcon, SettingsIcon, SparklesIcon } from "../ui/AppIcons";
+import Avatar from "../ui/Avatar";
+import {
+  ArrowLeftIcon,
+  BooksIcon,
+  FileDescriptionIcon,
+  GitBranchIcon,
+  Grid2x2Icon,
+  LayoutDashboardIcon,
+  MessageSquareIcon,
+  SettingsIcon,
+  SparklesIcon
+} from "../ui/AppIcons";
 
 type NavBarProps = {
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
 };
+
+type NavItem =
+  | {
+      key: string;
+      kind?: "item";
+      label: string;
+      icon: ReactNode;
+      route: string;
+      active: boolean;
+    }
+  | {
+      key: string;
+      kind: "divider";
+    };
 
 const navTransition = {
   type: "spring",
@@ -15,9 +41,9 @@ const navTransition = {
 } as const;
 
 const viewerByRole = {
-  manager: { initials: "SC", label: "Manager" },
-  dev: { initials: "MT", label: "Developer" },
-  client: { initials: "LF", label: "Client" }
+  manager: { initials: "SC", label: "Manager", seed: "Sarah Chen" },
+  dev: { initials: "MT", label: "Developer", seed: "Marcus Thompson" },
+  client: { initials: "LF", label: "Client", seed: "Lisa Foster" }
 } as const;
 
 function getCurrentRole() {
@@ -41,6 +67,27 @@ function labelAnimation(expanded: boolean) {
   };
 }
 
+function NavItemButton({ item, expanded, onClick }: { item: Extract<NavItem, { kind?: "item" }>; expanded: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      title={item.label}
+      onClick={onClick}
+      className={[
+        "relative flex h-11 w-full items-center gap-[14px] px-[14px] text-left transition-colors",
+        item.active ? "bg-[rgba(0,180,160,0.08)]" : "hover:bg-[#f7f6f3]"
+      ].join(" ")}
+    >
+      {item.active ? <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[#00b4a0]" /> : null}
+
+      <span className={item.active ? "text-[#00b4a0]" : "text-[#888888]"}>{item.icon}</span>
+      <motion.span animate={labelAnimation(expanded)} className="whitespace-nowrap font-bebas text-[13px] text-[#0a0a0a]">
+        {item.label}
+      </motion.span>
+    </button>
+  );
+}
+
 export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -52,7 +99,9 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
     return matchedProject?.[1] ?? "1";
   }, [pathname]);
 
-  const items = [
+  const isProjectRoute = pathname.startsWith("/projects/");
+
+  const generalItems: NavItem[] = [
     {
       key: "dashboard",
       label: "DASHBOARD",
@@ -77,14 +126,14 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
     {
       key: "memory",
       label: "MEMORY",
-      icon: <FileTextIcon />,
+      icon: <BooksIcon />,
       route: `/projects/${currentProjectId}/memory`,
       active: /^\/projects\/[^/]+\/(?:memory|docs(?:\/.*)?)$/.test(pathname)
     },
     {
       key: "live-doc",
       label: "LIVE DOC",
-      icon: <GitBranchIcon />,
+      icon: <FileDescriptionIcon />,
       route: `/projects/${currentProjectId}/live-doc`,
       active: /^\/projects\/[^/]+\/live-doc$/.test(pathname)
     },
@@ -103,6 +152,61 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       active: pathname === "/settings"
     }
   ];
+
+  const projectItems: NavItem[] = [
+    {
+      key: "back",
+      label: "BACK",
+      icon: <ArrowLeftIcon />,
+      route: "/dashboard",
+      active: false
+    },
+    { key: "project-divider", kind: "divider" },
+    {
+      key: "overview",
+      label: "OVERVIEW",
+      icon: <LayoutDashboardIcon />,
+      route: `/projects/${currentProjectId}`,
+      active: new RegExp(`^/projects/${currentProjectId}$`).test(pathname)
+    },
+    {
+      key: "brain",
+      label: "BRAIN",
+      icon: <SparklesIcon />,
+      route: `/projects/${currentProjectId}/brain`,
+      active: new RegExp(`^/projects/${currentProjectId}/brain$`).test(pathname)
+    },
+    {
+      key: "flowchart",
+      label: "FLOWCHART",
+      icon: <GitBranchIcon />,
+      route: `/projects/${currentProjectId}/flow`,
+      active: new RegExp(`^/projects/${currentProjectId}/flow$`).test(pathname)
+    },
+    {
+      key: "memory",
+      label: "MEMORY",
+      icon: <BooksIcon />,
+      route: `/projects/${currentProjectId}/memory`,
+      active: new RegExp(`^/projects/${currentProjectId}/(?:memory|docs(?:/.*)?)$`).test(pathname)
+    },
+    {
+      key: "live-doc",
+      label: "LIVE DOC",
+      icon: <FileDescriptionIcon />,
+      route: `/projects/${currentProjectId}/live-doc`,
+      active: new RegExp(`^/projects/${currentProjectId}/live-doc$`).test(pathname)
+    },
+    {
+      key: "requests",
+      label: "REQUESTS",
+      icon: <MessageSquareIcon />,
+      route: `/projects/${currentProjectId}/requests`,
+      active: new RegExp(`^/projects/${currentProjectId}/requests$`).test(pathname)
+    }
+  ];
+
+  const items = isProjectRoute ? projectItems : generalItems;
 
   return (
     <motion.aside
@@ -124,34 +228,19 @@ export function NavBar({ expanded, onExpandedChange }: NavBarProps) {
       </div>
 
       <div className="flex-1 pt-2">
-        {items.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            title={item.label}
-            onClick={() => navigate(item.route)}
-            className={[
-              "relative flex h-11 w-full items-center gap-[14px] px-[14px] text-left transition-colors",
-              item.active ? "bg-[rgba(0,180,160,0.08)]" : "hover:bg-[#f7f6f3]"
-            ].join(" ")}
-          >
-            {item.active ? <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[#00b4a0]" /> : null}
+        {items.map((item) => {
+          if (item.kind === "divider") {
+            return <div key={item.key} className="mx-[22px] my-2 h-px bg-[#e8e8e4]" />;
+          }
 
-            <span className={item.active ? "text-[#00b4a0]" : "text-[#888888]"}>{item.icon}</span>
-            <motion.span
-              animate={labelAnimation(expanded)}
-              className="whitespace-nowrap font-bebas text-[13px] text-[#0a0a0a]"
-            >
-              {item.label}
-            </motion.span>
-          </button>
-        ))}
+          return <NavItemButton key={item.key} item={item} expanded={expanded} onClick={() => navigate(item.route)} />;
+        })}
       </div>
 
       <div className="mb-4 px-[14px]">
         <div className="flex items-center">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#e0dbf5]">
-            <span className="font-bebas text-[11px] leading-none text-[#8b7fd4]">{viewer.initials}</span>
+          <div className="flex-shrink-0">
+            <Avatar seed={viewer.seed} size={28} name={viewer.seed} role={viewer.label} />
           </div>
 
           <AnimatePresence initial={false}>

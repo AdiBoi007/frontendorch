@@ -1,7 +1,8 @@
 import mermaid from "mermaid";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { GitBranchIcon, GitMergeIcon, UsersIcon } from "../components/ui/AppIcons";
+import Avatar from "../components/ui/Avatar";
+import { ArrowRightIcon, GitBranchIcon, GitMergeIcon, UsersIcon } from "../components/ui/AppIcons";
 import { getLiveDoc, saveLiveDocSection } from "../lib/api";
 import type { LiveDocComment, LiveDocPayload, LiveDocSection } from "../lib/types";
 import { useParams } from "react-router-dom";
@@ -21,12 +22,12 @@ const initialDiagramState: DiagramState = {
 
 const systemDiagram = `
 graph TD
-  A([🛒 Buyer App]) -->|places order| B[API Gateway]
+  A([Buyer App]) -->|places order| B[API Gateway]
   B --> C[Order Service]
   C -->|assigns| D[Driver Assignment]
   C -->|notifies| E[Florist Dashboard]
-  C -->|charges| F([💳 Stripe Connect])
-  D -->|availability check| G([🚗 Driver API])
+  C -->|charges| F([Stripe Connect])
+  D -->|availability check| G([Driver API])
   E -->|confirms| D
   D -->|dispatched| H[Notifications]
   H -->|SMS/Push| A
@@ -46,10 +47,10 @@ graph TD
 
 const useCaseDiagram = `
 graph LR
-  Buyer(["👤 Buyer"])
-  Florist(["🌸 Florist"])
-  Driver(["🚗 Driver"])
-  Admin(["👔 Admin"])
+  Buyer([Buyer])
+  Florist([Florist])
+  Driver([Driver])
+  Admin([Admin])
   
   subgraph BloomFast System
     UC1[Browse & Search]
@@ -102,7 +103,7 @@ flowchart TD
   L -->|No| M[Escalate to Admin]
   L -->|Yes| N[Driver Dispatched]
   N --> O[Real-time Tracking Active]
-  O --> P([Delivery Complete ✓])
+  O --> P([Delivery Complete])
   
   style A fill:#c8f0e8,stroke:#00b4a0
   style P fill:#c8f0e8,stroke:#00b4a0
@@ -139,7 +140,7 @@ sequenceDiagram
   DA->>OS: Status Update
   OS->>B: SMS — Driver En Route
   D->>OS: Delivered
-  OS->>B: SMS — Delivered ✓
+  OS->>B: SMS — Delivered
   OS->>S: Trigger Payout
 `;
 
@@ -247,22 +248,6 @@ function formatDiagramTimestamp() {
       minute: "2-digit"
     })
     .toUpperCase();
-}
-
-function getAvatarStyle(initials: string) {
-  if (initials.length === 1) {
-    return { bg: "#e0dbf5", text: "#8b7fd4" };
-  }
-
-  if (initials === "MC") {
-    return { bg: "#fceee4", text: "#f59340" };
-  }
-
-  if (initials === "JL") {
-    return { bg: "#c8f0e8", text: "#00b4a0" };
-  }
-
-  return { bg: "#e8e8e4", text: "#555555" };
 }
 
 function sectionValue(section: LiveDocSection, drafts: SectionDrafts) {
@@ -480,8 +465,6 @@ function CommentCard({
   active: boolean;
   registerRef: (id: string, node: HTMLDivElement | null) => void;
 }) {
-  const avatar = getAvatarStyle(comment.authorInitials);
-
   return (
     <motion.div
       ref={(el) => registerRef(comment.id, el)}
@@ -494,11 +477,8 @@ function CommentCard({
       ].join(" ")}
     >
       <div className="flex items-center gap-2">
-        <div
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full font-bebas text-[13px] leading-none"
-          style={{ background: avatar.bg, color: avatar.text }}
-        >
-          {comment.authorInitials}
+        <div className="flex-shrink-0">
+          <Avatar seed={comment.authorName} size={32} name={comment.authorName} />
         </div>
 
         <p className="min-w-0 flex-1 truncate font-syne text-[13px] font-semibold text-[#0a0a0a]">{comment.authorName}</p>
@@ -936,10 +916,11 @@ export function LiveDocPage() {
                                 initial="hidden"
                                 animate="visible"
                                 exit="hidden"
-                                className="pointer-events-none absolute left-[-120px] top-1/2 whitespace-nowrap rounded-full bg-[#00b4a0] px-[10px] py-1 font-syne text-[10px] font-semibold text-white"
+                                className="pointer-events-none absolute left-[-132px] top-1/2 inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[#00b4a0] px-[10px] py-1 font-syne text-[10px] font-semibold text-white"
                                 style={{ transform: "translateY(-50%)" }}
                               >
-                                VIEW SOURCE →
+                                VIEW SOURCE
+                                <ArrowRightIcon className="h-3 w-3" />
                               </motion.span>
                             ) : null}
                           </AnimatePresence>
