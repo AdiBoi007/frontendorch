@@ -9,6 +9,7 @@ import {
   messageInsightListQuerySchema,
   messageInsightParamsSchema,
   messageParamsSchema,
+  oauthCallbackQuerySchema,
   projectParamsSchema,
   providerConnectParamsSchema,
   syncQuerySchema,
@@ -18,6 +19,30 @@ import {
 } from "./schemas.js";
 
 export const registerCommunicationRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/oauth/slack/callback", async (request) => {
+    const query = oauthCallbackQuerySchema.parse(request.query);
+    const data = await request.appContext.services.communicationsService.connectors.handleOAuthCallback("slack", query);
+    return { data, meta: null, error: null };
+  });
+
+  app.get("/oauth/google/callback", async (request) => {
+    const query = oauthCallbackQuerySchema.parse(request.query);
+    const data = await request.appContext.services.communicationsService.connectors.handleOAuthCallback("gmail", query);
+    return { data, meta: null, error: null };
+  });
+
+  app.post("/webhooks/slack", async (request, reply) => {
+    const result = await request.appContext.services.communicationsService.connectors.handleWebhook("slack", {
+      headers: request.headers,
+      rawBody: request.rawBody ?? JSON.stringify(request.body ?? {}),
+      body: request.body
+    });
+    if (result.statusCode) {
+      reply.code(result.statusCode);
+    }
+    return result.body;
+  });
+
   app.get(
     "/projects/:projectId/connectors",
     authGuard(async (request) => {

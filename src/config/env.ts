@@ -33,6 +33,18 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
   OPENAI_TRANSCRIPTION_MODEL: z.string().default("gpt-4o-mini-transcribe"),
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
+  SLACK_SIGNING_SECRET: z.string().optional(),
+  SLACK_REDIRECT_URI: z.string().url().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
+  GOOGLE_PUBSUB_TOPIC: z.string().optional(),
+  CONNECTOR_CREDENTIAL_VAULT_MODE: z.enum(["memory", "encrypted_file"]).default("encrypted_file"),
+  CONNECTOR_OAUTH_STATE_SECRET: z.string().min(16).default("change_me_connector_state_secret"),
+  CONNECTOR_SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
+  CONNECTOR_SYNC_MAX_BACKFILL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   RETRIEVAL_TOP_K: z.coerce.number().int().positive().default(8),
   RETRIEVAL_MIN_SCORE: z.coerce.number().default(0.2),
   RETRIEVAL_USE_HYBRID: z
@@ -62,6 +74,50 @@ const envSchema = z.object({
       path: ["REDIS_URL"],
       message: "REDIS_URL is required when QUEUE_MODE=bullmq"
     });
+  }
+
+  const providerGroups = [
+    {
+      name: "Slack",
+      fields: ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET", "SLACK_REDIRECT_URI"] as const
+    },
+    {
+      name: "Google",
+      fields: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"] as const
+    }
+  ];
+
+  for (const group of providerGroups) {
+    const provided = group.fields.filter((field) => Boolean(value[field]));
+    if (provided.length > 0 && provided.length !== group.fields.length) {
+      for (const field of group.fields) {
+        if (!value[field]) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} is required when configuring ${group.name} OAuth`
+          });
+        }
+      }
+    }
+  }
+
+  if (value.NODE_ENV === "production") {
+    if (value.CONNECTOR_CREDENTIAL_VAULT_MODE !== "encrypted_file") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["CONNECTOR_CREDENTIAL_VAULT_MODE"],
+        message: "Production requires CONNECTOR_CREDENTIAL_VAULT_MODE=encrypted_file"
+      });
+    }
+
+    if (value.CONNECTOR_OAUTH_STATE_SECRET.includes("change_me")) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["CONNECTOR_OAUTH_STATE_SECRET"],
+        message: "Production requires a non-default CONNECTOR_OAUTH_STATE_SECRET"
+      });
+    }
   }
 });
 

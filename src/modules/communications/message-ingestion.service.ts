@@ -63,7 +63,7 @@ export class MessageIngestionService {
 
     let createdMessageCount = 0;
     let updatedRevisionCount = 0;
-    const indexedMessageIds: string[] = [];
+    const indexedMessages: Array<{ messageId: string; bodyHash: string }> = [];
     const messageIds: string[] = [];
 
     const messagesByProviderId = new Map<string, string>();
@@ -83,7 +83,7 @@ export class MessageIngestionService {
         updatedRevisionCount += 1;
       }
       if (result.needsIndexing) {
-        indexedMessageIds.push(result.messageId);
+        indexedMessages.push({ messageId: result.messageId, bodyHash: result.bodyHash });
       }
     }
 
@@ -94,23 +94,27 @@ export class MessageIngestionService {
       });
     }
 
-    for (const messageId of indexedMessageIds) {
-      const key = jobKeys.indexCommunicationMessage(messageId, batch.syncRunId ?? "manual");
+    for (const indexedMessage of indexedMessages) {
+      const key = jobKeys.indexCommunicationMessage(indexedMessage.messageId, indexedMessage.bodyHash);
       await this.prisma.jobRun.upsert({
         where: { idempotencyKey: key },
         update: {
           jobType: JobNames.indexCommunicationMessage,
           status: "pending",
-          payloadJson: { messageId, idempotencyKey: key }
+          payloadJson: { messageId: indexedMessage.messageId, idempotencyKey: key }
         },
         create: {
           jobType: JobNames.indexCommunicationMessage,
           status: "pending",
           idempotencyKey: key,
-          payloadJson: { messageId, idempotencyKey: key }
+          payloadJson: { messageId: indexedMessage.messageId, idempotencyKey: key }
         }
       });
-      await this.jobs.enqueue(JobNames.indexCommunicationMessage, { messageId, idempotencyKey: key }, key);
+      await this.jobs.enqueue(
+        JobNames.indexCommunicationMessage,
+        { messageId: indexedMessage.messageId, idempotencyKey: key },
+        key
+      );
     }
 
     await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, batch.projectId, "communication_ingested");
@@ -120,7 +124,7 @@ export class MessageIngestionService {
       messageIds,
       createdMessageCount,
       updatedRevisionCount,
-      indexedMessageCount: indexedMessageIds.length
+      indexedMessageCount: indexedMessages.length
     };
   }
 
@@ -236,6 +240,7 @@ export class MessageIngestionService {
 
     return {
       messageId,
+      bodyHash,
       created,
       revisionCreated,
       needsIndexing: created || revisionCreated

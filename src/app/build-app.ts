@@ -29,6 +29,21 @@ export async function buildApp(context: AppContext) {
 
   app.decorate("appContext", context);
 
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
+    const rawBody = typeof body === "string" ? body : body.toString("utf8");
+    request.rawBody = rawBody;
+    if (!rawBody) {
+      done(null, {});
+      return;
+    }
+
+    try {
+      done(null, JSON.parse(rawBody));
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  });
+
   await app.register(cors, {
     origin: context.env.CORS_ALLOWED_ORIGINS.split(",").map((value) => value.trim())
   });

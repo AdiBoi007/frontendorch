@@ -1,4 +1,5 @@
 import type { CommunicationProvider, PrismaClient } from "@prisma/client";
+import type { AppEnv } from "../../config/env.js";
 import type { EmbeddingProvider, GenerationProvider } from "../../lib/ai/provider.js";
 import { CredentialVault } from "../../lib/communications/credential-vault.js";
 import type { NormalizedCommunicationBatch } from "../../lib/communications/provider-normalized-types.js";
@@ -41,6 +42,7 @@ export class CommunicationsService {
 
   constructor(
     prisma: PrismaClient,
+    env: AppEnv,
     projectService: ProjectService,
     auditService: AuditService,
     jobs: JobDispatcher,
@@ -50,11 +52,11 @@ export class CommunicationsService {
   ) {
     this.prisma = prisma;
     this.auditService = auditService;
-    const credentialVault = new CredentialVault();
+    const credentialVault = new CredentialVault(env);
     const providers = new Map<string, CommunicationProviderAdapter>([
       ["manual_import", new ManualImportProvider()],
-      ["slack", new SlackProvider()],
-      ["gmail", new GmailProvider()],
+      ["slack", new SlackProvider(env)],
+      ["gmail", new GmailProvider(env)],
       ["outlook", new OutlookProvider()],
       ["microsoft_teams", new TeamsProvider()],
       ["whatsapp_business", new WhatsAppBusinessProvider()]
@@ -64,8 +66,9 @@ export class CommunicationsService {
     this.normalizer = new MessageNormalizerService();
     this.ingestion = new MessageIngestionService(prisma, jobs);
     this.indexing = new MessageIndexingService(prisma, embeddingProvider, auditService, jobs);
-    this.connectors = new ConnectorsService(prisma, projectService, auditService, jobs, credentialVault, providers);
-    this.sync = new SyncService(prisma, projectService, auditService, jobs, providers);
+    this.connectors = new ConnectorsService(prisma, env, projectService, auditService, jobs, credentialVault, providers);
+    this.sync = new SyncService(prisma, env, projectService, auditService, jobs, credentialVault, providers, this.ingestion);
+    this.connectors.setSyncService(this.sync);
     this.timeline = new TimelineService(prisma, projectService, auditService);
     this.impactResolver = new ImpactResolverService(prisma);
     this.proposals = new CommunicationProposalsService(prisma, projectService, auditService, jobs);

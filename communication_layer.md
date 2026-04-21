@@ -2402,6 +2402,38 @@ For implementation-grounded details of the finished C2 build, use:
 
 ---
 
+## 24C. C3 implementation status in this repo
+
+Build C3 is now implemented on top of C1 and C2 in this repository.
+
+What C3 implements:
+
+- `CredentialVault` as the only storage path for live provider credentials
+- HMAC-signed one-time OAuth state verification using `oauth_states`
+- Slack OAuth callback flow
+- Gmail OAuth callback flow
+- Slack history + replies sync
+- Slack Events API webhook verification + dedupe + job enqueue
+- Gmail polling/manual incremental sync
+- provider cursor advancement through `communication_connectors.provider_cursor_json`
+- connector sync job loading credentials through the vault
+- safe revocation without deleting historical evidence
+
+Current repo-specific clarifications:
+
+- Gmail is implemented with robust polling/manual incremental sync; push/watch notification handling is still deferred
+- provider credentials are not stored in Prisma rows; only `credentials_ref` is stored there
+- development/test may use in-memory vault mode, but production must use encrypted file mode
+- Slack delete events mark `isDeletedByProvider = true` and preserve the original normalized evidence rows
+- message edits still create `communication_message_revisions` through the existing ingestion service
+
+For implementation-grounded details of the finished C3 build, use:
+
+- `feature5.md`
+- `communication_layer_C3.md`
+
+---
+
 ## 25. Source-of-truth references inside the repo
 
 This file is specifically aligned to these repo concepts:

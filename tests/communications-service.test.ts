@@ -216,11 +216,12 @@ describe("Communication layer C1 services", () => {
       $executeRawUnsafe: vi.fn().mockResolvedValue(1)
     } as any;
 
+    const enqueue = vi.fn().mockResolvedValue(undefined);
     const service = new MessageIndexingService(
       prisma,
       { embedText: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]) } as any,
       { record: vi.fn().mockResolvedValue(undefined) } as any,
-      { enqueue: vi.fn().mockResolvedValue(undefined) } as any
+      { enqueue } as any
     );
 
     await service.runIndexJob({ messageId: "msg-1", idempotencyKey: "index-message:msg-1:test" });
@@ -238,6 +239,11 @@ describe("Communication layer C1 services", () => {
         where: { idempotencyKey: "index-message:msg-1:test" },
         data: expect.objectContaining({ status: "completed" })
       })
+    );
+    expect(enqueue).toHaveBeenCalledWith(
+      "classify_message_insight",
+      expect.objectContaining({ projectId: "project-1", messageId: "msg-1" }),
+      expect.stringContaining("classify-message:msg-1:")
     );
   });
 });

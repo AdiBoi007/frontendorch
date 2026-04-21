@@ -176,6 +176,8 @@ function createContext() {
       })),
       update: vi.fn(async () => ({ id: "connector-1", accountLabel: "Renamed", status: "connected" })),
       connect: vi.fn(async () => ({ connectorId: "connector-1", provider: "manual_import", status: "connected", redirectUrl: null })),
+      handleOAuthCallback: vi.fn(async () => ({ connectorId: "connector-1", provider: "slack", status: "connected", syncRunId: "sync-1", redirectAfter: null })),
+      handleWebhook: vi.fn(async () => ({ statusCode: 200, body: { ok: true } })),
       revoke: vi.fn(async () => ({ id: "connector-1", status: "revoked" })),
       listSyncRuns: vi.fn(async () => [{ id: "sync-1", status: "completed" }])
     },
@@ -287,6 +289,18 @@ function createContext() {
       PASSWORD_HASH_COST: 12,
       ANTHROPIC_MODEL_REASONING: "mock",
       OPENAI_TRANSCRIPTION_MODEL: "mock-transcribe",
+      SLACK_CLIENT_ID: "slack-client-id",
+      SLACK_CLIENT_SECRET: "slack-client-secret",
+      SLACK_SIGNING_SECRET: "slack-signing-secret",
+      SLACK_REDIRECT_URI: "http://localhost:3000/v1/oauth/slack/callback",
+      GOOGLE_CLIENT_ID: "google-client-id",
+      GOOGLE_CLIENT_SECRET: "google-client-secret",
+      GOOGLE_REDIRECT_URI: "http://localhost:3000/v1/oauth/google/callback",
+      GOOGLE_PUBSUB_TOPIC: undefined,
+      CONNECTOR_CREDENTIAL_VAULT_MODE: "memory",
+      CONNECTOR_OAUTH_STATE_SECRET: "test-connector-oauth-state-secret",
+      CONNECTOR_SYNC_BATCH_SIZE: 100,
+      CONNECTOR_SYNC_MAX_BACKFILL_DAYS: 30,
       OPENAI_EMBEDDING_MODEL: "mock",
       RETRIEVAL_TOP_K: 8,
       RETRIEVAL_MIN_SCORE: 0.2,
@@ -711,6 +725,47 @@ describe("route contracts", () => {
     });
 
     expect(clientTimelineResponse.statusCode).toBe(403);
+  });
+
+  it("supports Slack and Google OAuth callbacks plus Slack webhooks", async () => {
+    const slackCallback = await app.inject({
+      method: "GET",
+      url: "/v1/oauth/slack/callback?code=test-code&state=test-state"
+    });
+
+    expect(slackCallback.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleOAuthCallback).toHaveBeenCalledWith("slack", {
+      code: "test-code",
+      state: "test-state"
+    });
+
+    const googleCallback = await app.inject({
+      method: "GET",
+      url: "/v1/oauth/google/callback?code=test-code&state=test-state"
+    });
+
+    expect(googleCallback.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleOAuthCallback).toHaveBeenCalledWith("gmail", {
+      code: "test-code",
+      state: "test-state"
+    });
+
+    const webhook = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/slack",
+      payload: {
+        type: "url_verification",
+        challenge: "challenge-token"
+      }
+    });
+
+    expect(webhook.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleWebhook).toHaveBeenCalledWith(
+      "slack",
+      expect.objectContaining({
+        body: expect.objectContaining({ type: "url_verification" })
+      })
+    );
   });
 
   it("supports communication insight and review routes with manager-only actions", async () => {

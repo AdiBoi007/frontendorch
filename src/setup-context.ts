@@ -63,6 +63,7 @@ export function buildContext(input: {
   const dashboardService = new DashboardService(input.prisma, projectService, auditService, input.telemetry);
   const communicationsService = new CommunicationsService(
     input.prisma,
+    input.env,
     projectService,
     auditService,
     jobs,

@@ -566,9 +566,20 @@ Compare two Product Brain versions.
 
 ## 8. Communication routes
 
-The current communication layer is Build C1 + C2: provider-agnostic schema hardening, manual import, connector read models, sync-run tracking, message indexing, machine-derived insight classification, review queues, and communication-driven proposal generation.
+The current communication layer is Build C1 + C2 + C3:
+- provider-agnostic schema hardening
+- manual import
+- connector read models
+- sync-run tracking
+- message indexing
+- machine-derived insight classification
+- review queues
+- communication-driven proposal generation
+- production-safe credential vaulting
+- Slack OAuth + sync + verified webhook ingestion
+- Gmail OAuth + polling/incremental sync ingestion
 
-### C1 authorization rules
+### Authorization rules
 - manager-only:
   - connector list/detail/update/connect/revoke
   - manual import
@@ -611,6 +622,10 @@ Manager-only connector detail.
 - recent sync runs
 - thread/message counts
 
+### Security notes
+- `credentialsRef` is internal-only and never returned
+- raw OAuth access tokens and refresh tokens are never returned
+
 ---
 
 ## 8.3 PATCH /v1/projects/:projectId/connectors/:connectorId
@@ -635,19 +650,56 @@ Manager-only connector update.
 ## 8.4 POST /v1/projects/:projectId/connectors/:provider/connect
 Manager-only provider connect/init route.
 
-### Supported providers in C1
+### Supported providers in the current repo
 - `manual_import` → creates or reuses a connected manual connector
+- `slack` → starts OAuth and returns a Slack OAuth URL
+- `gmail` → starts OAuth and returns a Google OAuth URL
 
 ### Present but not implemented yet
-- `slack`
-- `gmail`
 - `outlook`
 - `microsoft_teams`
 - `whatsapp_business`
 
 ### Behavior
 - `manual_import` returns a connected connector immediately
-- non-manual providers return a clean not-implemented error from provider stubs
+- `slack` and `gmail` return `pending_auth` plus a provider OAuth URL
+- other providers return a clean not-implemented error from provider stubs
+
+---
+
+## 8.4A GET /v1/oauth/slack/callback
+Unauthenticated Slack OAuth callback.
+
+### Behavior
+- verifies and consumes one-time OAuth state
+- exchanges the Slack code for bot credentials
+- stores credentials through `CredentialVault`
+- creates or updates the Slack connector
+- enqueues initial `backfill` sync
+
+---
+
+## 8.4B GET /v1/oauth/google/callback
+Unauthenticated Google OAuth callback for Gmail.
+
+### Behavior
+- verifies and consumes one-time OAuth state
+- exchanges the Google code for Gmail read-only credentials
+- stores credentials through `CredentialVault`
+- creates or updates the Gmail connector
+- enqueues initial `backfill` sync
+
+---
+
+## 8.4C POST /v1/webhooks/slack
+Unauthenticated Slack Events API webhook.
+
+### Behavior
+- verifies Slack request signature and timestamp
+- responds immediately to `url_verification`
+- dedupes webhook events by `event_id`
+- enqueues webhook sync work for matching Slack connectors
+- does not perform heavy ingestion inline
 
 ---
 
@@ -673,8 +725,16 @@ Manager-only sync trigger.
 ```
 
 ### Notes
-- C1 records sync runs and queues sync jobs for all providers
 - `manual_import` sync is a no-op/provider-summary path
+- `slack` supports:
+  - OAuth-based connect
+  - manual/incremental backfill sync
+  - verified webhook-triggered sync
+- `gmail` supports:
+  - OAuth-based connect
+  - manual/incremental polling sync
+  - watch/webhook delivery is intentionally deferred in the current repo
+- repeated syncs are idempotent at the evidence layer and must not duplicate messages
 
 ---
 

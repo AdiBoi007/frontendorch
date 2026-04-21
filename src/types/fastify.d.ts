@@ -5,6 +5,7 @@ declare module "fastify" {
   interface FastifyRequest {
     requestId: string;
     requestStartedAt?: bigint;
+    rawBody?: string;
     authUser?: JwtUser;
     appContext: AppContext;
   }

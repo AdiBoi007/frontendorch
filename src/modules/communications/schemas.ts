@@ -46,6 +46,12 @@ export const providerConnectParamsSchema = z.object({
   provider: communicationProviderSchema
 });
 
+export const oauthCallbackQuerySchema = z.object({
+  code: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional()
+});
+
 export const threadParamsSchema = z.object({
   projectId: z.string().uuid(),
   threadId: z.string().uuid()

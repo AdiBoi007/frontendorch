@@ -9,7 +9,7 @@ export const communicationProviders = [
 
 export type CommunicationProviderName = (typeof communicationProviders)[number];
 
-export const implementedCommunicationProviders = ["manual_import"] as const;
+export const implementedCommunicationProviders = ["manual_import", "slack", "gmail"] as const;
 
 export function isImplementedCommunicationProvider(provider: CommunicationProviderName) {
   return implementedCommunicationProviders.includes(provider as (typeof implementedCommunicationProviders)[number]);

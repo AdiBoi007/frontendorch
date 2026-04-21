@@ -208,6 +208,10 @@ Intended for:
 ## 5.8 Connector credentials / OAuth
 - Slack client id/secret + signing secret
 - Google OAuth client id/secret
+- connector vault mode
+- connector OAuth state secret
+- connector sync batch size
+- connector max backfill days
 - WhatsApp Business app credentials as needed
 - provider webhook verification tokens if relevant
 
@@ -257,6 +261,21 @@ ANTHROPIC_MODEL_REASONING=claude-sonnet-4
 OPENAI_API_KEY=...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+
+SLACK_CLIENT_ID=...
+SLACK_CLIENT_SECRET=...
+SLACK_SIGNING_SECRET=...
+SLACK_REDIRECT_URI=http://localhost:3000/v1/oauth/slack/callback
+
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=http://localhost:3000/v1/oauth/google/callback
+GOOGLE_PUBSUB_TOPIC=
+
+CONNECTOR_CREDENTIAL_VAULT_MODE=encrypted_file
+CONNECTOR_OAUTH_STATE_SECRET=replace_with_long_random_secret
+CONNECTOR_SYNC_BATCH_SIZE=100
+CONNECTOR_SYNC_MAX_BACKFILL_DAYS=30
 
 RETRIEVAL_TOP_K=8
 RETRIEVAL_MIN_SCORE=0.2
@@ -311,13 +330,33 @@ CORS must be explicit.
 ## 8.4 No plaintext connector credentials in DB
 Use a secret manager or encrypted credential references.
 
-## 8.5 Signed file access
+The current repo stores provider credentials only through `CredentialVault`.
+
+- development/test may use `CONNECTOR_CREDENTIAL_VAULT_MODE=memory`
+- production must use `CONNECTOR_CREDENTIAL_VAULT_MODE=encrypted_file`
+- the encryption key is derived from `CONNECTOR_OAUTH_STATE_SECRET`
+- `communication_connectors.credentials_ref` stores only a vault reference, never raw OAuth tokens
+
+## 8.5 OAuth and webhook rules
+- Slack OAuth requires:
+  - `SLACK_CLIENT_ID`
+  - `SLACK_CLIENT_SECRET`
+  - `SLACK_REDIRECT_URI`
+  - `SLACK_SIGNING_SECRET`
+- Gmail OAuth requires:
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+  - `GOOGLE_REDIRECT_URI`
+- OAuth callback state is one-time-use and expires quickly
+- webhook handlers must verify provider signatures/timestamps and queue heavy work
+- Gmail is currently implemented with robust polling/manual sync fallback; push/watch wiring is intentionally deferred
+## 8.6 Signed file access
 If raw files need direct access:
 - use signed URLs
 - short TTL
 - per-resource validation
 
-## 8.6 Client-safe projections only
+## 8.7 Client-safe projections only
 Client routes must be filtered server-side, never by frontend convention only.
 
 ---
@@ -334,6 +373,8 @@ Client routes must be filtered server-side, never by frontend convention only.
 - `generate_product_brain`
 - `sync_communication_connector`
 - `classify_message_insights`
+- `classify_thread_insight`
+- `generate_change_proposal_from_insight`
 - `precompute_socrates_suggestions`
 - `refresh_dashboard_snapshot`
 
