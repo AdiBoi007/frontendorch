@@ -885,3 +885,12 @@ Production audit completed against the implemented codebase.
 
 ### Test coverage
 - 117 tests passing total (all features combined)
+
+## Launch-Gate Loop — 2026-04-21
+
+`tests/launch_gate_communication_truth.e2e.test.ts` proves the full end-to-end loop.
+
+Feature 2 integration confirmed:
+- `hybridRetrieve()` with `includeCommunications: true` returns the ingested message with `sourceType: "communication_message"`
+- Communication message chunks are created during retrieval indexing
+- `isDeletedByProvider: false` filter is applied at the `findMany` level and in raw SQL

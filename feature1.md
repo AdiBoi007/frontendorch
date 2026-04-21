@@ -673,3 +673,13 @@ new DocumentService(
 ### Test coverage
 - 117 tests passing across all pipeline stages
 - Covers: stale parse revision skipping, monotonic chunk indices, viewer markers, provenance, search, audio transcription, fallback version selection, and message evidence
+
+## Launch-Gate Loop — 2026-04-21
+
+`tests/launch_gate_communication_truth.e2e.test.ts` proves the full end-to-end loop.
+
+Feature 1 integration confirmed:
+- `applyAcceptedProposal()` calls `brainService.generateBrainGraph()` then `generateProductBrain()` after manager acceptance
+- New `artifactVersion` (v2) is created with `status: "accepted"`, superseding v1
+- `specChangeProposal.acceptedBrainVersionId` is set to the new brain artifact ID
+- Original document sections remain immutable throughout

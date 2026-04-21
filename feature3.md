@@ -836,3 +836,13 @@ Added indexes specifically for viewer payload query performance:
 - Feature 1 produces `documentSection`, `documentChunk`, `specChangeLink`, `brainSectionLink` records consumed by Feature 3
 - Feature 2 citations produce `open_target` payloads that match the `document_section` open-target shape from Feature 3
 - Socrates citation highlighting in the viewer reuses the same anchor contracts defined by Feature 3
+
+## Launch-Gate Loop — 2026-04-21
+
+`tests/launch_gate_communication_truth.e2e.test.ts` proves the full end-to-end loop.
+
+Feature 3 integration confirmed:
+- After manager acceptance and `applyAcceptedProposal()`, `getViewerPayload()` returns `changeMarkers` on the affected section
+- `loadSectionOverlays()` correctly filters `specChangeLink` by `linkType: "document_section"` and `proposal.status: "accepted"`
+- Non-client users see `linkedMessageRefs` with message + thread provenance
+- `hasCurrentTruthOverlay: true` is set for sections with accepted change markers

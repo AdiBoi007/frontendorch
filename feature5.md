@@ -329,3 +329,21 @@ The plan identified `includeBotMessages` config as unenforced in Slack sync. On 
 - `tests/socrates-hybrid.test.ts`: soft-deleted messages excluded from indexing and chunk queries
 - `tests/dashboard-service.test.ts`: `needsReviewCount` counts only `detected` insights, not `converted_to_proposal` or `converted_to_decision`
 - `tests/communication-providers.test.ts`: Slack bot messages filtered when `includeBotMessages: false`
+
+## Launch-Gate Loop — 2026-04-21
+
+`tests/launch_gate_communication_truth.e2e.test.ts` proves the full end-to-end loop.
+
+**LAUNCH LOOP PROVEN: YES**
+
+Feature 5 integration confirmed across all 10 stages:
+- Stage C: `ingestNormalizedBatch()` creates thread + message with `isDeletedByProvider: false`
+- Stage D: `classifyMessage()` produces `requirement_change` insight with `affectedRefs` pointing at the seeded section and brain node
+- Stage E: `autoCreateProposal()` creates proposal with `sourceMessageCount: 1` and all 4 link types (message/source, thread/evidence, document_section/affected, brain_node/affected)
+- Stage F security: dev user `accept()` is correctly rejected with 403
+- Stage F: manager `accept()` passes all three provenance validations (`sourceMessageCount > 0`, document_section link, brain_node link) and marks proposal accepted
+- Stage G: `applyAcceptedProposal()` generates brain v2, supersedes v1, sets `acceptedBrainVersionId`
+- Stage G immutability: original document section text is unchanged
+- Stage H: `getViewerPayload()` returns `changeMarkers` on the affected section with `changeProposalId` set
+- Stage I: `hybridRetrieve()` with `includeCommunications: true` returns the ingested message with `sourceType: "communication_message"`
+- Stage J: `getProjectDashboard()` shows `acceptedRecentCount > 0`, `brain.latestVersionId = brainV2Id`, `brain.freshnessState = "current"`

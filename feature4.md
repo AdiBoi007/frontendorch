@@ -768,3 +768,12 @@ Full adversarial production audit completed against the implemented codebase. Fe
 - `payloadJson` typed as generic `Json` in Prisma schema — type safety enforced only at service layer; no runtime Zod validation on read
 - Hard-coded thresholds (80% watch, 7-day recent window, 14-day brain stale) — intentional, documented in feature4.md §12
 - No member deactivation dashboard refresh trigger — headcount stays stale until next 5-min rebuild or write-triggered refresh
+
+## Launch-Gate Loop — 2026-04-21
+
+`tests/launch_gate_communication_truth.e2e.test.ts` proves the full end-to-end loop.
+
+Feature 4 integration confirmed:
+- `getProjectDashboard(forceRefresh: true)` after `applyAcceptedProposal()` returns `changes.acceptedRecentCount > 0`
+- `brain.latestVersionId` reflects the newly accepted brain v2 artifact
+- `brain.freshnessState === "current"` when the brain was accepted after the latest change and within the 14-day stale window
