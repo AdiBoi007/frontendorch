@@ -411,7 +411,7 @@ async function retrieveMessages(
   commWeight: number
 ): Promise<RetrievalCandidate[]> {
   const messages = await prisma.communicationMessage.findMany({
-    where: { projectId, bodyText: { not: "" } },
+    where: { projectId, bodyText: { not: "" }, isDeletedByProvider: false },
     orderBy: { sentAt: "desc" },
     take: Math.max(topK * 4, 20),
     include: { thread: true, attachments: true },
@@ -450,6 +450,7 @@ async function retrieveMessages(
     JOIN communication_threads ct ON ct.id = cmc.thread_id
     WHERE cmc.project_id = $1
       AND cmc.embedding IS NOT NULL
+      AND cm.is_deleted_by_provider = false
     ORDER BY cmc.embedding <=> $2::vector
     LIMIT $3
   `,

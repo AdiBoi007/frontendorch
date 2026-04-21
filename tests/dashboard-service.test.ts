@@ -526,4 +526,73 @@ describe("DashboardService", () => {
     expect(payload.projects[0].brain.freshnessState).toBe("blocked");
     expect(payload.projects[0].movementLabel).toBe("slow");
   });
+
+  it("counts only detected insights for needsReviewCount while converted insights do not inflate it", async () => {
+    const snapshotCreate = vi.fn(async ({ data }) => ({
+      id: "snap-comm-1",
+      computedAt: new Date("2026-04-21T00:00:00.000Z"),
+      payloadJson: data.payloadJson
+    }));
+    const prisma = {
+      project: {
+        findUnique: vi.fn().mockResolvedValue({ orgId: "org-1" }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: "project-1",
+          orgId: "org-1",
+          name: "Apollo",
+          slug: "apollo",
+          status: "active",
+          description: null,
+          previewUrl: null,
+          members: [],
+          documents: [],
+          changeProposals: [],
+          decisions: [],
+          artifacts: [],
+          communicationConnectors: [
+            {
+              id: "connector-1",
+              provider: "slack",
+              status: "connected",
+              accountLabel: "Slack",
+              lastSyncedAt: new Date("2026-04-21T00:00:00.000Z"),
+              lastError: null
+            }
+          ],
+          // The DB query pre-filters to only active statuses — no ignored/superseded here
+          messageInsights: [
+            { id: "insight-1", insightType: "blocker", status: "detected", generatedProposalId: null },
+            { id: "insight-2", insightType: "contradiction", status: "converted_to_proposal", generatedProposalId: "proposal-1" },
+            { id: "insight-3", insightType: "blocker", status: "converted_to_decision", generatedProposalId: null }
+          ]
+        })
+      },
+      dashboardSnapshot: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: snapshotCreate,
+        update: vi.fn()
+      }
+    } as any;
+
+    const service = new DashboardService(
+      prisma,
+      {
+        ensureProjectAccess: vi.fn().mockResolvedValue({ projectRole: "manager" }),
+        ensureProjectManager: vi.fn().mockResolvedValue({ projectRole: "manager" })
+      } as any,
+      { record: vi.fn() } as any,
+      { increment: vi.fn(), observeDuration: vi.fn() } as any
+    );
+
+    const payload = await service.getProjectDashboard("project-1", "manager-1", { forceRefresh: true });
+
+    // Only the `detected` insight counts toward needsReviewCount — converted ones must not inflate it
+    expect(payload.communication.needsReviewCount).toBe(1);
+    // All three active insights count toward insightCount
+    expect(payload.communication.insightCount).toBe(3);
+    // Two blocker-type insights across all statuses
+    expect(payload.communication.blockerCount).toBe(2);
+    // One contradiction-type insight
+    expect(payload.communication.contradictionCount).toBe(1);
+  });
 });

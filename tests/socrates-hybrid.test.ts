@@ -207,4 +207,89 @@ describe("hybridRetrieve", () => {
       sourceType: "communication_message"
     });
   });
+
+  it("excludes soft-deleted messages from communication retrieval indexing and chunk queries", async () => {
+    const messagesFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "message-live",
+        projectId: "project-1",
+        connectorId: "connector-1",
+        provider: "slack",
+        threadId: "thread-1",
+        senderLabel: "PM",
+        senderEmail: "pm@example.com",
+        bodyText: "Active message that should be indexed.",
+        bodyHtml: null,
+        isDeletedByProvider: false,
+        thread: { subject: "Planning", participantsJson: [] },
+        attachments: []
+      },
+      {
+        id: "message-deleted",
+        projectId: "project-1",
+        connectorId: "connector-1",
+        provider: "slack",
+        threadId: "thread-1",
+        senderLabel: "PM",
+        senderEmail: "pm@example.com",
+        bodyText: "This message was deleted by the provider.",
+        bodyHtml: null,
+        isDeletedByProvider: true,
+        thread: { subject: "Planning", participantsJson: [] },
+        attachments: []
+      }
+    ]);
+
+    const chunkCreate = vi.fn().mockResolvedValue({ id: "chunk-1" });
+    const prisma = {
+      communicationMessage: {
+        findMany: messagesFindMany
+      },
+      communicationMessageChunk: {
+        findMany: vi.fn().mockResolvedValue([]),
+        create: chunkCreate
+      },
+      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+      $executeRawUnsafe: vi.fn().mockResolvedValue(1)
+    } as any;
+
+    const embedProvider = {
+      embedText: vi.fn().mockResolvedValue([0.1, 0.2, 0.3])
+    } as any;
+
+    await hybridRetrieve(prisma, embedProvider, "org-1", {
+      projectId: "project-1",
+      query: "planning discussion",
+      queryEmbedding: [0.1, 0.2, 0.3],
+      intent: "original_source",
+      domains: {
+        includeDocuments: false,
+        includeBrainNodes: false,
+        includeProductBrain: false,
+        includeChanges: false,
+        includeDecisions: false,
+        includeDashboard: false,
+        includeCommunications: true
+      },
+      topK: 5,
+      minScore: 0,
+      isClientContext: false,
+      acceptedTruthBoost: 1.2,
+      docWeight: 1,
+      commWeight: 0.8
+    });
+
+    // findMany must filter soft-deleted messages out at the query level
+    expect(messagesFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          isDeletedByProvider: false
+        })
+      })
+    );
+
+    // The chunk raw SQL must also filter soft-deleted messages
+    const [chunkSql] = (prisma.$queryRawUnsafe as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+    expect(chunkSql).toContain("is_deleted_by_provider");
+  });
 });

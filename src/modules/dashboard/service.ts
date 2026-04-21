@@ -505,7 +505,7 @@ export class DashboardService {
             where: {
               status: { in: ["detected", "converted_to_proposal", "converted_to_decision"] }
             },
-            select: { id: true, insightType: true, generatedProposalId: true }
+            select: { id: true, insightType: true, status: true, generatedProposalId: true }
           }
         }
       })
@@ -637,7 +637,7 @@ export class DashboardService {
           where: {
             status: { in: ["detected", "converted_to_proposal", "converted_to_decision"] }
           },
-          select: { id: true, insightType: true, generatedProposalId: true }
+          select: { id: true, insightType: true, status: true, generatedProposalId: true }
         }
       }
     });
@@ -704,7 +704,7 @@ export class DashboardService {
     decisions: Parameters<DashboardService["buildDecisionSummary"]>[0];
     artifacts: Array<Pick<ArtifactVersion, "id" | "versionNumber" | "acceptedAt" | "createdAt">>;
     communicationConnectors: Array<{ id: string; provider: string; status: string; lastSyncedAt: Date | null; lastError: string | null }>;
-    messageInsights: Array<{ id: string; insightType: string; generatedProposalId: string | null }>;
+    messageInsights: Array<{ id: string; insightType: string; status: string; generatedProposalId: string | null }>;
   }): ProjectCard {
     const teamSummary = this.buildTeamSummary(project.members);
     const documents = this.buildDocumentReadiness(project.documents);
@@ -1138,7 +1138,7 @@ export class DashboardService {
 
   private buildCommunicationSummary(
     connectors: Array<{ id: string; provider: string; status: string; lastSyncedAt: Date | null; lastError: string | null }>,
-    insights: Array<{ id: string; insightType: string; generatedProposalId: string | null }>
+    insights: Array<{ id: string; insightType: string; status: string; generatedProposalId: string | null }>
   ): CommunicationSummary {
     const lastSyncedAt = connectors
       .map((connector) => connector.lastSyncedAt?.toISOString() ?? null)
@@ -1150,7 +1150,7 @@ export class DashboardService {
       providerCount: connectors.filter((connector) => connector.status === "connected").length,
       lastSyncedAt,
       insightCount: insights.length,
-      needsReviewCount: insights.filter((insight) => !insight.generatedProposalId).length,
+      needsReviewCount: insights.filter((insight) => insight.status === "detected").length,
       blockerCount: insights.filter((insight) => insight.insightType === "blocker").length,
       contradictionCount: insights.filter((insight) => insight.insightType === "contradiction").length,
       connectorStatuses: connectors.map((connector) => ({

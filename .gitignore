@@ -4,5 +4,6 @@ dist/
 .env.local
 .env.*.local
 storage/
+.vault/
 .DS_Store
 Thumbs.db

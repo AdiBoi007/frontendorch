@@ -285,3 +285,47 @@ The repo now includes coverage for:
 - `communication_layer_C2.md` documents the intelligence/review build
 - `communication_layer_C3.md` documents Slack/Gmail production connector work
 - `communication_layer_C4.md` documents Outlook/Teams/WhatsApp and hardening work
+
+## Audit Notes — 2026-04-21
+
+Full adversarial production audit of the communication layer C1–C4. The following bugs were found and fixed:
+
+### Bug C1 (HIGH) — Soft-deleted messages in hybrid retrieval
+`src/lib/retrieval/hybrid.ts` `retrieveMessages()` did not filter `isDeletedByProvider = true` messages.
+Fixed by adding `isDeletedByProvider: false` to the Prisma `findMany` and `AND cm.is_deleted_by_provider = false` to the raw SQL chunk query.
+
+### Bug C2 (MEDIUM) — `needsReviewCount` used wrong predicate
+`src/modules/dashboard/service.ts` `buildCommunicationSummary()` counted any insight without a `generatedProposalId` as "needing review", which incorrectly inflated counts for `converted_to_proposal` insights and any status. Fixed by filtering on `status === "detected"` only. Also added `status: true` to both insight select queries.
+
+### Bug C3 (HIGH — security) — `.vault/` not in `.gitignore`
+The encrypted credential vault writes to `.vault/connectors/`. This directory was missing from `.gitignore`. Added `.vault/` entry.
+
+### Schema confirmed clean — no migration needed
+- All 9 communication enums present and correct
+- All 11 communication models present with correct constraints and indexes
+- Migrations 0008 (C1 foundation) and 0009 (C2 intelligence) confirmed
+- C3/C4 added no schema migrations (code-only changes) — correct per spec
+
+### Provider implementation status confirmed
+- manual_import: full
+- Slack: OAuth + sync + webhook — full
+- Gmail: OAuth + polling sync — full (push/watch deferred)
+- Outlook: OAuth + delta/backfill sync + webhook — full
+- Teams: OAuth + channel sync + webhook — full
+- WhatsApp: webhook-first with readiness gate — full
+
+### False positive identified (Bug C4)
+The plan identified `includeBotMessages` config as unenforced in Slack sync. On audit, `shouldIncludeMessage()` already correctly filters `bot_message` subtype and `bot_id` presence in both the main history loop and reply loop. No fix required.
+
+### Intentionally deferred items (confirmed not bugs)
+- Gmail push/watch webhook delivery
+- Provider-side revoke() for Slack, Gmail, Outlook, Teams, WhatsApp
+- Outbound send/reply for any provider
+- Outlook/Teams subscription renewal lifecycle automation
+- WhatsApp media download (ephemeral URLs)
+- Attachment extraction/OCR
+
+### Tests added
+- `tests/socrates-hybrid.test.ts`: soft-deleted messages excluded from indexing and chunk queries
+- `tests/dashboard-service.test.ts`: `needsReviewCount` counts only `detected` insights, not `converted_to_proposal` or `converted_to_decision`
+- `tests/communication-providers.test.ts`: Slack bot messages filtered when `includeBotMessages: false`

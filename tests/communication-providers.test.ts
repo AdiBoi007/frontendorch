@@ -814,6 +814,64 @@ describe("communication layer C3 providers", () => {
     );
   });
 
+  it("filters bot messages from Slack sync when includeBotMessages is false", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("conversations.history")) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            messages: [
+              {
+                ts: "1713600000.000100",
+                text: "User message from human",
+                user: "U123"
+              },
+              {
+                ts: "1713600001.000200",
+                text: "Bot notification",
+                subtype: "bot_message",
+                bot_id: "B456"
+              },
+              {
+                ts: "1713600002.000300",
+                text: "Another bot via bot_id only",
+                bot_id: "B789"
+              }
+            ],
+            response_metadata: { next_cursor: "" }
+          }),
+          { status: 200 }
+        );
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const provider = new SlackProvider(createEnv(), fetchMock as typeof fetch);
+
+    const result = await provider.sync({
+      projectId: "project-1",
+      connector: {
+        id: "connector-1",
+        projectId: "project-1",
+        provider: "slack",
+        accountLabel: "Slack",
+        status: "connected",
+        configJson: { channelIds: ["C123"], includeBotMessages: false, backfillDays: 30 },
+        providerCursorJson: { channels: {} }
+      } as any,
+      credential: { accessToken: "xoxb-test", teamId: "T123" },
+      syncType: "backfill",
+      batchSize: 50,
+      maxBackfillDays: 30
+    });
+
+    const messages = result.batches?.[0]?.messages ?? [];
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.bodyText).toBe("User message from human");
+    expect(messages.every((m) => m.messageType !== "bot")).toBe(true);
+  });
+
   it("retries provider sync on rate limits before succeeding", async () => {
     const env = createEnv();
     const telemetry = { increment: vi.fn(), observeDuration: vi.fn(), setGauge: vi.fn(), renderPrometheus: vi.fn(() => "") } as any;
