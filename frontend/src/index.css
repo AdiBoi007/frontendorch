@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f7f6f3;
+  --bg-1: #ffffff;
+  --bg-2: #f7f6f3;
+  --border: #eeeeea;
+  --teal: #00b4a0;
+  --teal-dim: rgba(0, 180, 160, 0.08);
+  --text-1: #0a0a0a;
+  --text-2: #888888;
+  --text-3: #999999;
+  font-family: "Syne", sans-serif;
+  color: var(--text-1);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  font-family: "Syne", sans-serif;
+  background: var(--bg);
+  color: var(--text-1);
+  overflow-x: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+textarea::placeholder {
+  color: var(--text-3);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+}
+
+.solid-card {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 16px 48px rgba(0, 0, 0, 0.08);
+}
+
+.primary-button {
+  background: #0a0a0a;
+  color: #ffffff;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  border-radius: 16px;
+  padding: 12px 24px;
+  border: 0;
+}
