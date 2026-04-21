@@ -279,6 +279,33 @@ The repo now includes coverage for:
 - provider rate-limit retry/backoff
 - route-level callback/webhook contracts
 
+## Automated evaluation harness
+
+Feature 5 now has a deterministic automated evaluation harness for communication intelligence under `evals/message_intelligence/`.
+
+Primary commands:
+
+- `npm run eval:messages`
+- `npm run eval:all`
+
+The harness runs the real message/thread insight services against seeded Orchestra fixture worlds and scores deterministic dimensions for:
+
+- insight type correctness
+- proposal creation thresholds
+- decision candidate behavior
+- false-positive resistance
+- affected-ref grounding
+- uncertainty preservation
+
+Implemented message-intelligence eval categories and case counts:
+
+- `classification` — 12
+- `false_positive_guard` — 12
+- `proposal_generation` — 10
+- `decision_candidate` — 8
+
+The runner writes JSON and Markdown reports to `evals/outputs/`.
+
 ## Rebuild reference
 
 - `communication_layer_C1.md` documents the foundation build

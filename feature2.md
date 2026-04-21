@@ -719,6 +719,35 @@ All tests are pure unit tests (no DB, no LLM, no network).
 - Service tests verify business logic invariants (invalidation, auth guard, caching)
 - Route tests verify HTTP contract shape and auth enforcement
 
+### Automated eval harness
+
+Feature 2 now ships with a deterministic regression harness under `evals/socrates/` and runner scripts under `scripts/`.
+
+Primary commands:
+
+- `npm run eval:socrates`
+- `npm run eval:all`
+
+The harness executes the real Socrates retrieval/orchestration path through `SocratesService.answerForEval(...)` against seeded fixture worlds and scores each case with deterministic checks for:
+
+- answer behavior
+- truth precedence
+- provenance precedence
+- citation presence
+- citation type correctness
+- open-target validity
+- role/client-safe filtering
+
+Implemented Socrates eval categories and case counts:
+
+- `current_truth` — 12
+- `provenance` — 12
+- `communication_origin` — 10
+- `citation_correctness` — 10
+- `role_safety` — 8
+
+Reports are emitted to `evals/outputs/` in JSON and Markdown form for local debugging and CI artifacts.
+
 ---
 
 ## 26. Production-readiness notes
@@ -864,7 +893,7 @@ Feature 2 is a pure consumer of Feature 1's outputs. It does not write to any Fe
 | Suggestion invalidation on accepted change | Implemented | Feature 1 accepted artifact creation deletes Socrates suggestions for sessions in the affected project. |
 | Streaming timeout | Implemented | `streamAnswer` wraps the Anthropic stream with a 120-second `AbortController`. On abort, the assistant message is marked `failed` and the SSE connection receives an error event before closing. |
 | Dashboard snapshot writes | Not Feature 2 | `DashboardSnapshot` schema is present; writes are the responsibility of Feature 4. |
-| Golden evaluation set | Not yet built | Manual evaluation questions are documented in `docs/SOCRATES_RAG_SPEC.md §17.3` but no automated evaluation harness exists yet. |
+| Golden evaluation set | Implemented | Deterministic JSONL golden cases and CI-friendly runners now live under `evals/socrates/` and `scripts/run-socrates-evals.ts`. |
 | Multi-session per user | Not restricted | A user can have multiple sessions per project. No deduplication. Session state is lightweight (no cost per idle session). |
 
 ---

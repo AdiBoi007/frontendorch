@@ -506,6 +506,98 @@ export class SocratesService {
     return messages;
   }
 
+  async answerForEval(
+    projectId: string,
+    actorUserId: string,
+    input: {
+      content: string;
+      pageContext: PageContext;
+      selectedRefType?: z.infer<typeof createSessionBodySchema>["selectedRefType"] | null;
+      selectedRefId?: string | null;
+      viewerState?: z.infer<typeof createSessionBodySchema>["viewerState"] | null;
+      recentHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+    }
+  ) {
+    const member = await this.projectService.ensureProjectAccess(projectId, actorUserId);
+    const isClientContext = member.projectRole === "client" || input.pageContext === "client_view";
+
+    await this.assertContextTargetsValid(projectId, member.projectRole, input.pageContext, {
+      selectedRefType: input.selectedRefType ?? null,
+      selectedRefId: input.selectedRefId ?? null,
+      viewerState: input.viewerState ?? null
+    });
+
+    const intent = classifyIntent(input.content);
+    const domains = selectDomains(input.pageContext, intent);
+    const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+    const queryEmbedding = await this.embeddingProvider.embedText(input.content);
+
+    const rawCandidates = await hybridRetrieve(this.prisma, this.embeddingProvider, project.orgId, {
+      projectId,
+      pageContext: input.pageContext,
+      query: input.content,
+      queryEmbedding,
+      intent,
+      domains,
+      selectedSectionId: input.selectedRefType === "document_section" ? (input.selectedRefId ?? undefined) : undefined,
+      selectedNodeId: input.selectedRefType === "brain_node" ? (input.selectedRefId ?? undefined) : undefined,
+      topK: this.env.RETRIEVAL_TOP_K,
+      minScore: this.env.RETRIEVAL_MIN_SCORE,
+      isClientContext,
+      acceptedTruthBoost: this.env.RETRIEVAL_ACCEPTED_TRUTH_BOOST,
+      docWeight: this.env.RETRIEVAL_DOC_WEIGHT,
+      commWeight: this.env.RETRIEVAL_COMM_WEIGHT
+    });
+
+    const candidates = rerank({
+      candidates: rawCandidates,
+      pageContext: input.pageContext,
+      intent,
+      selectedRefId: input.selectedRefId ?? undefined,
+      selectedSectionId: input.selectedRefType === "document_section" ? (input.selectedRefId ?? undefined) : undefined,
+      selectedNodeId: input.selectedRefType === "brain_node" ? (input.selectedRefId ?? undefined) : undefined,
+      topK: Math.min(this.env.RETRIEVAL_TOP_K, 10),
+      isClientContext
+    });
+
+    const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+    const userPrompt = buildUserPrompt(input.content, {
+      projectId,
+      pageContext: input.pageContext,
+      intent,
+      selectedRefType: input.selectedRefType ?? undefined,
+      selectedRefId: input.selectedRefId ?? undefined,
+      viewerState: input.viewerState ?? undefined,
+      recentHistory: input.recentHistory ?? [],
+      candidates,
+      isClientContext
+    });
+
+    const parsedAnswer = await this.generationProvider.generateObject({
+      prompt: userPrompt,
+      systemPrompt: SOCRATES_SYSTEM_PROMPT,
+      schema: answerSchema,
+      fallback: () => this.buildDeterministicEvalAnswer(input.content, intent, candidates)
+    });
+
+    const citations = await this.validateCitations(parsedAnswer.citations, candidateIds, projectId, isClientContext);
+    const openTargets = await this.validateOpenTargets(parsedAnswer.open_targets, citations, projectId, isClientContext);
+
+    return {
+      answer_md: parsedAnswer.answer_md,
+      citations,
+      open_targets: openTargets,
+      suggested_prompts: parsedAnswer.suggested_prompts,
+      confidence: parsedAnswer.confidence,
+      debug: {
+        intent,
+        domains,
+        candidateIds: candidates.map((candidate) => candidate.id),
+        candidates
+      }
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
@@ -576,6 +668,152 @@ export class SocratesService {
     ]);
   }
 
+  private buildDeterministicEvalAnswer(
+    userContent: string,
+    intent: ReturnType<typeof classifyIntent>,
+    candidates: Awaited<ReturnType<typeof hybridRetrieve>>
+  ): AnswerSchema {
+    const preferredByIntent: Record<ReturnType<typeof classifyIntent>, Array<(typeof candidates)[number]["sourceType"]>> = {
+      current_truth: ["product_brain", "change_proposal", "decision_record", "brain_node", "document_chunk"],
+      original_source: ["document_chunk", "communication_message", "change_proposal"],
+      change_history: ["change_proposal", "communication_message", "document_chunk"],
+      decision_history: ["decision_record", "communication_message", "document_chunk"],
+      doc_local: ["document_chunk", "brain_node", "change_proposal"],
+      brain_local: ["brain_node", "product_brain", "document_chunk"],
+      dashboard_status: ["dashboard_snapshot", "product_brain", "change_proposal"],
+      communication_lookup: ["communication_message", "change_proposal", "document_chunk"],
+      comparison_or_diff: ["change_proposal", "decision_record", "product_brain", "document_chunk"],
+      explain_for_role: ["product_brain", "document_chunk", "change_proposal", "decision_record"]
+    };
+
+    const preferred = [...preferredByIntent[intent]];
+    const normalizedQuery = userContent.toLowerCase();
+    if (intent === "original_source") {
+      const prefersCommunication = /\b(slack|gmail|email|message|thread|conversation)\b/i.test(normalizedQuery);
+      const prefersDocuments = /\b(original|initial|first)\s+(prd|doc|document|brief|spec)\b/i.test(normalizedQuery);
+      if (prefersCommunication && !prefersDocuments) {
+        preferred.sort((left, right) => {
+          const leftScore = left === "communication_message" ? -1 : 1;
+          const rightScore = right === "communication_message" ? -1 : 1;
+          return leftScore - rightScore;
+        });
+      }
+    }
+    const sorted = [...candidates].sort((left, right) => {
+      const leftIndex = preferred.indexOf(left.sourceType);
+      const rightIndex = preferred.indexOf(right.sourceType);
+      const normalizedLeft = leftIndex === -1 ? preferred.length : leftIndex;
+      const normalizedRight = rightIndex === -1 ? preferred.length : rightIndex;
+      if (normalizedLeft !== normalizedRight) {
+        return normalizedLeft - normalizedRight;
+      }
+      return right.finalScore - left.finalScore;
+    });
+    const chosen = sorted.slice(0, Math.min(sorted.length, 3));
+
+    if (chosen.length === 0) {
+      return {
+        answer_md: "I couldn’t find grounded evidence for that question in the current project context.",
+        citations: [],
+        open_targets: [],
+        suggested_prompts: [],
+        confidence: 0.1
+      };
+    }
+
+    const lead = chosen[0];
+    const summary = lead.contextualContent ?? lead.content;
+    const answerPrefix =
+      intent === "current_truth"
+        ? "Current accepted understanding:"
+        : intent === "original_source" || intent === "communication_lookup"
+          ? "The strongest original evidence says:"
+          : "Grounded evidence indicates:";
+
+    const citations = chosen.map((candidate) => ({
+      type: this.mapCandidateToCitationType(candidate.sourceType),
+      refId: candidate.id,
+      label: candidate.label,
+      ...(candidate.pageNumber ? { pageNumber: candidate.pageNumber } : {}),
+      confidence: Math.max(0.2, Math.min(0.99, Number(candidate.finalScore.toFixed(2))))
+    }));
+
+    const openTargets = chosen
+      .map((candidate) => this.buildOpenTargetForCandidate(candidate))
+      .filter((target): target is OpenTargetRef => target !== null);
+
+    return {
+      answer_md: `${answerPrefix} ${summary.slice(0, 320)}`,
+      citations,
+      open_targets: openTargets,
+      suggested_prompts: [],
+      confidence: citations[0]?.confidence
+    };
+  }
+
+  private mapCandidateToCitationType(sourceType: Awaited<ReturnType<typeof hybridRetrieve>>[number]["sourceType"]): CitationSchema["type"] {
+    switch (sourceType) {
+      case "communication_message":
+        return "message";
+      case "document_chunk":
+        return "document_chunk";
+      case "brain_node":
+        return "brain_node";
+      case "product_brain":
+        return "product_brain";
+      case "change_proposal":
+        return "change_proposal";
+      case "decision_record":
+        return "decision_record";
+      case "dashboard_snapshot":
+        return "dashboard_snapshot";
+    }
+  }
+
+  private buildOpenTargetForCandidate(candidate: Awaited<ReturnType<typeof hybridRetrieve>>[number]): OpenTargetRef | null {
+    switch (candidate.sourceType) {
+      case "communication_message":
+        return {
+          targetType: "message",
+          targetRef: { messageId: candidate.id, ...(candidate.containerId ? { threadId: candidate.containerId } : {}) }
+        };
+      case "document_chunk":
+        if (!candidate.anchorId) {
+          return null;
+        }
+        return {
+          targetType: "document_section",
+          targetRef: {
+            ...(candidate.containerId ? { documentVersionId: candidate.containerId } : {}),
+            anchorId: candidate.anchorId,
+            ...(candidate.pageNumber ? { pageNumber: candidate.pageNumber } : {})
+          }
+        };
+      case "brain_node":
+        return {
+          targetType: "brain_node",
+          targetRef: { nodeId: candidate.id, ...(candidate.containerId ? { artifactVersionId: candidate.containerId } : {}) }
+        };
+      case "change_proposal":
+        return {
+          targetType: "change_proposal",
+          targetRef: { proposalId: candidate.id }
+        };
+      case "decision_record":
+        return {
+          targetType: "decision_record",
+          targetRef: { decisionId: candidate.id }
+        };
+      case "dashboard_snapshot":
+        return {
+          targetType: "dashboard_filter",
+          targetRef: { filter: "snapshot", value: candidate.id }
+        };
+      case "product_brain":
+        return null;
+    }
+  }
+
   private async validateOpenTargets(
     rawTargets: OpenTargetRef[],
     citations: CitationSchema[],
@@ -619,9 +857,25 @@ export class SocratesService {
         const section = sections.find((candidate) => candidate.parseRevision === candidate.documentVersion.parseRevision);
         if (!section) return false;
         if (isClientContext && section.documentVersion.document.visibility === "internal") return false;
-        return citations.some(
+        const directSectionCitation = citations.some(
           (citation) => citation.type === "document_section" && citation.refId === section.id
         );
+        if (directSectionCitation) {
+          return true;
+        }
+        const citedChunkIds = citations
+          .filter((citation) => citation.type === "document_chunk")
+          .map((citation) => citation.refId);
+        if (citedChunkIds.length === 0) {
+          return false;
+        }
+        const chunk = await this.prisma.documentChunk.findFirst({
+          where: {
+            id: { in: citedChunkIds },
+            projectId
+          }
+        });
+        return Boolean(chunk?.sectionId && chunk.sectionId === section.id);
       }
       case "message": {
         if (isClientContext) return false;

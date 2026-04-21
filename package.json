@@ -7,6 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "worker": "tsx watch src/worker.ts",
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
     "test": "vitest run",
@@ -14,7 +15,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "eval:socrates": "tsx scripts/run-socrates-evals.ts",
+    "eval:messages": "tsx scripts/run-message-intelligence-evals.ts",
+    "eval:all": "tsx scripts/run-all-evals.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.782.0",

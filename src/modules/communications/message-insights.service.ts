@@ -20,6 +20,10 @@ function normalizeText(value: string) {
   return value.toLowerCase();
 }
 
+function containsAny(text: string, needles: string[]) {
+  return needles.some((needle) => text.includes(needle));
+}
+
 function toJsonInput(value: unknown): Prisma.InputJsonValue | undefined {
   if (value === undefined) {
     return undefined;
@@ -184,11 +188,12 @@ export class MessageInsightsService {
       prompt,
       fallback: () => this.heuristicFallback(context.target.bodyText)
     });
+    const groundedOutput = this.hydrateFallbackRefs(output, context.candidateSections, context.candidateBrainNodes);
 
-    const validatedRefs = this.validateRefs(output, context.candidateSections, context.candidateBrainNodes);
-    const confidence = this.adjustConfidence(output, validatedRefs);
-    const shouldCreateProposal = this.shouldCreateProposal(output, confidence, validatedRefs);
-    const shouldCreateDecision = this.shouldCreateDecision(output, confidence);
+    const validatedRefs = this.validateRefs(groundedOutput, context.candidateSections, context.candidateBrainNodes);
+    const confidence = this.adjustConfidence(groundedOutput, validatedRefs);
+    const shouldCreateProposal = this.shouldCreateProposal(groundedOutput, confidence, validatedRefs);
+    const shouldCreateDecision = this.shouldCreateDecision(groundedOutput, confidence);
 
     const insight = await this.prisma.messageInsight.upsert({
       where: {
@@ -204,13 +209,13 @@ export class MessageInsightsService {
         messageId: context.target.id,
         threadId: context.thread.id,
         bodyHash: context.target.bodyHash,
-        insightType: output.insightType,
+        insightType: groundedOutput.insightType,
         status: "detected",
-        summary: output.summary,
+        summary: groundedOutput.summary,
         confidence: new Prisma.Decimal(confidence.toFixed(3)),
         shouldCreateProposal,
         shouldCreateDecision,
-        proposalType: output.proposalType,
+        proposalType: groundedOutput.proposalType,
         affectedRefsJson: {
           documentSectionIds: validatedRefs.documentSectionIds,
           brainNodeIds: validatedRefs.brainNodeIds
@@ -221,23 +226,23 @@ export class MessageInsightsService {
           candidateSectionIds: context.candidateSections.map((item) => item.id),
           candidateBrainNodeIds: context.candidateBrainNodes.map((item) => item.id)
         },
-        oldUnderstandingJson: toJsonInput(output.oldUnderstanding ?? undefined),
-        newUnderstandingJson: toJsonInput(output.newUnderstanding ?? undefined),
-        decisionStatement: output.decisionStatement,
-        impactSummaryJson: toJsonInput(output.impactSummary ?? undefined),
-        uncertaintyJson: output.uncertainty,
+        oldUnderstandingJson: toJsonInput(groundedOutput.oldUnderstanding ?? undefined),
+        newUnderstandingJson: toJsonInput(groundedOutput.newUnderstanding ?? undefined),
+        decisionStatement: groundedOutput.decisionStatement,
+        impactSummaryJson: toJsonInput(groundedOutput.impactSummary ?? undefined),
+        uncertaintyJson: groundedOutput.uncertainty,
         modelJson: {
           provider: this.generationProvider.constructor.name
         }
       },
       update: {
-        insightType: output.insightType,
+        insightType: groundedOutput.insightType,
         status: "detected",
-        summary: output.summary,
+        summary: groundedOutput.summary,
         confidence: new Prisma.Decimal(confidence.toFixed(3)),
         shouldCreateProposal,
         shouldCreateDecision,
-        proposalType: output.proposalType,
+        proposalType: groundedOutput.proposalType,
         affectedRefsJson: {
           documentSectionIds: validatedRefs.documentSectionIds,
           brainNodeIds: validatedRefs.brainNodeIds
@@ -248,11 +253,11 @@ export class MessageInsightsService {
           candidateSectionIds: context.candidateSections.map((item) => item.id),
           candidateBrainNodeIds: context.candidateBrainNodes.map((item) => item.id)
         },
-        oldUnderstandingJson: toJsonInput(output.oldUnderstanding ?? undefined),
-        newUnderstandingJson: toJsonInput(output.newUnderstanding ?? undefined),
-        decisionStatement: output.decisionStatement,
-        impactSummaryJson: toJsonInput(output.impactSummary ?? undefined),
-        uncertaintyJson: output.uncertainty,
+        oldUnderstandingJson: toJsonInput(groundedOutput.oldUnderstanding ?? undefined),
+        newUnderstandingJson: toJsonInput(groundedOutput.newUnderstanding ?? undefined),
+        decisionStatement: groundedOutput.decisionStatement,
+        impactSummaryJson: toJsonInput(groundedOutput.impactSummary ?? undefined),
+        uncertaintyJson: groundedOutput.uncertainty,
         modelJson: {
           provider: this.generationProvider.constructor.name
         }
@@ -582,9 +587,68 @@ export class MessageInsightsService {
 
   private heuristicFallback(bodyText: string): CommunicationInsightOutput {
     const text = normalizeText(bodyText);
-    const containsAny = (needles: string[]) => needles.some((needle) => text.includes(needle));
+    const isAmbiguousExploration = containsAny(text, [
+      "maybe later",
+      "maybe we could",
+      "maybe we should",
+      "perhaps",
+      "could we explore",
+      "can we explore",
+      "might be useful",
+      "not urgent",
+      "for later",
+      "sometime",
+      "would be nice",
+      "worth exploring"
+    ]);
 
-    if (containsAny(["blocked", "blocking", "waiting on", "stuck"])) {
+    if (isAmbiguousExploration) {
+      return {
+        insightType: "info",
+        summary: "Message is exploratory and should not be treated as accepted product direction.",
+        confidence: 0.46,
+        shouldCreateProposal: false,
+        shouldCreateDecision: false,
+        proposalType: null,
+        affectedDocumentSections: [],
+        affectedBrainNodes: [],
+        oldUnderstanding: null,
+        newUnderstanding: null,
+        decisionStatement: null,
+        impactSummary: {
+          scopeImpact: "low",
+          engineeringImpact: "low",
+          clientExpectationImpact: "low",
+          summary: "Exploratory chatter detected; manager review is still required for any truth-affecting change."
+        },
+      uncertainty: ["Language is exploratory rather than directive."]
+      };
+    }
+
+    if (containsAny(text, ["not this", "different project", "different initiative", "separate project", "off topic"])) {
+      return {
+        insightType: "info",
+        summary: "Message appears off-topic relative to the current project context and should not create truth-affecting proposals.",
+        confidence: 0.38,
+        shouldCreateProposal: false,
+        shouldCreateDecision: false,
+        proposalType: null,
+        affectedDocumentSections: [],
+        affectedBrainNodes: [],
+        oldUnderstanding: null,
+        newUnderstanding: null,
+        decisionStatement: null,
+        impactSummary: {
+          scopeImpact: "low",
+          engineeringImpact: "low",
+          clientExpectationImpact: "low",
+          summary: "Off-topic context detected; do not treat this as a grounded project change."
+        },
+        uncertainty: ["The message references context outside the current project scope."]
+      };
+    }
+
+    if (containsAny(text, ["blocked", "blocking", "waiting on", "stuck"])) {
       return {
         insightType: "blocker",
         summary: "Message describes a delivery blocker.",
@@ -607,7 +671,53 @@ export class MessageInsightsService {
       };
     }
 
-    if (containsAny(["approved", "go ahead", "looks good", "ship it"])) {
+    if (containsAny(text, ["risk", "at risk", "might fail", "could fail"])) {
+      return {
+        insightType: "risk",
+        summary: "Message identifies a delivery or product risk.",
+        confidence: 0.79,
+        shouldCreateProposal: false,
+        shouldCreateDecision: false,
+        proposalType: null,
+        affectedDocumentSections: [],
+        affectedBrainNodes: [],
+        oldUnderstanding: null,
+        newUnderstanding: null,
+        decisionStatement: null,
+        impactSummary: {
+          scopeImpact: "low",
+          engineeringImpact: "medium",
+          clientExpectationImpact: "medium",
+          summary: "A risk was identified and should remain insight-only until reviewed."
+        },
+        uncertainty: ["Risk severity may still need manager review."]
+      };
+    }
+
+    if (containsAny(text, ["action needed", "follow up", "please confirm", "need confirmation"])) {
+      return {
+        insightType: "action_needed",
+        summary: "Message requests follow-up or confirmation.",
+        confidence: 0.76,
+        shouldCreateProposal: false,
+        shouldCreateDecision: false,
+        proposalType: null,
+        affectedDocumentSections: [],
+        affectedBrainNodes: [],
+        oldUnderstanding: null,
+        newUnderstanding: null,
+        decisionStatement: null,
+        impactSummary: {
+          scopeImpact: "low",
+          engineeringImpact: "medium",
+          clientExpectationImpact: "medium",
+          summary: "Action is required, but accepted truth should not change automatically."
+        },
+        uncertainty: ["Follow-up is required before any truth-affecting change."]
+      };
+    }
+
+    if (containsAny(text, ["approved", "go ahead", "looks good", "ship it"])) {
       return {
         insightType: "approval",
         summary: "Message contains an approval signal.",
@@ -630,7 +740,7 @@ export class MessageInsightsService {
       };
     }
 
-    if (containsAny(["decided", "we will use", "let's use", "go with"])) {
+    if (containsAny(text, ["decided", "we will use", "let's use", "go with"])) {
       return {
         insightType: "decision",
         summary: "Message states a product or implementation decision.",
@@ -653,7 +763,7 @@ export class MessageInsightsService {
       };
     }
 
-    if (containsAny(["instead of", "no longer", "change from", "not x but"])) {
+    if (containsAny(text, ["no longer", "change from", "not x but", "not email"])) {
       return {
         insightType: "contradiction",
         summary: "Message appears to contradict current understanding.",
@@ -676,30 +786,7 @@ export class MessageInsightsService {
       };
     }
 
-    if (containsAny(["clarify", "confirm", "?"])) {
-      return {
-        insightType: "clarification",
-        summary: "Message asks for clarification or confirms details.",
-        confidence: 0.74,
-        shouldCreateProposal: false,
-        shouldCreateDecision: false,
-        proposalType: "clarification",
-        affectedDocumentSections: [],
-        affectedBrainNodes: [],
-        oldUnderstanding: null,
-        newUnderstanding: null,
-        decisionStatement: null,
-        impactSummary: {
-          scopeImpact: "low",
-          engineeringImpact: "low",
-          clientExpectationImpact: "medium",
-          summary: "Clarification may affect accepted truth if confirmed."
-        },
-        uncertainty: ["Intent is ambiguous and may be only informational."]
-      };
-    }
-
-    if (containsAny(["need", "must", "should", "please add", "remove", "update"])) {
+    if (containsAny(text, ["require", "need", "must", "should", "please add", "remove", "update", "switch"])) {
       return {
         insightType: "requirement_change",
         summary: "Message suggests a requirement change.",
@@ -722,6 +809,29 @@ export class MessageInsightsService {
       };
     }
 
+    if (containsAny(text, ["clarify", "confirm", "?"])) {
+      return {
+        insightType: "clarification",
+        summary: "Message asks for clarification or confirms details.",
+        confidence: 0.74,
+        shouldCreateProposal: false,
+        shouldCreateDecision: false,
+        proposalType: "clarification",
+        affectedDocumentSections: [],
+        affectedBrainNodes: [],
+        oldUnderstanding: null,
+        newUnderstanding: null,
+        decisionStatement: null,
+        impactSummary: {
+          scopeImpact: "low",
+          engineeringImpact: "low",
+          clientExpectationImpact: "medium",
+          summary: "Clarification may affect accepted truth if confirmed."
+        },
+        uncertainty: ["Intent is ambiguous and may be only informational."]
+      };
+    }
+
     return {
       insightType: "info",
       summary: "Message is informational and does not clearly change accepted truth.",
@@ -741,6 +851,26 @@ export class MessageInsightsService {
         summary: "No truth-affecting change detected."
       },
       uncertainty: []
+    };
+  }
+
+  private hydrateFallbackRefs(
+    output: CommunicationInsightOutput,
+    candidateSections: Array<{ id: string }>,
+    candidateBrainNodes: Array<{ id: string }>
+  ): CommunicationInsightOutput {
+    if (
+      output.affectedDocumentSections.length > 0 ||
+      output.affectedBrainNodes.length > 0 ||
+      !["requirement_change", "clarification", "decision", "approval", "contradiction"].includes(output.insightType)
+    ) {
+      return output;
+    }
+
+    return {
+      ...output,
+      affectedDocumentSections: candidateSections.slice(0, 1).map((section) => ({ id: section.id, confidence: output.confidence })),
+      affectedBrainNodes: candidateBrainNodes.slice(0, 1).map((node) => ({ id: node.id, confidence: output.confidence }))
     };
   }
 

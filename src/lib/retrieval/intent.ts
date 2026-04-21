@@ -63,7 +63,7 @@ const INTENT_PATTERNS: Array<{ intent: QueryIntent; patterns: RegExp[] }> = [
     patterns: [
       /\bfirst (mentioned|said|written|stated|defined)\b/i,
       /\bwhere (was|did|is) (this|it) (come from|introduced|start)\b/i,
-      /\bwhat did the (original|initial|first) (prd|srs|doc|brief|requirement)\b/i,
+      /\bwhat did the (original|initial|first)(?:\s+\w+){0,2}\s+(prd|srs|doc|document|brief|requirement)\b/i,
       /\bwhich (slack|gmail|email|message|thread)(\s+\w+)? (introduced|said|created|triggered)\b/i,
       /\bprovenance\b/i,
       /\bsource (of|for) (this|that|the)\b/i,
@@ -73,6 +73,7 @@ const INTENT_PATTERNS: Array<{ intent: QueryIntent; patterns: RegExp[] }> = [
   {
     intent: "communication_lookup",
     patterns: [
+      /\bwhich (message|thread)\b/i,
       /\bslack\b/i,
       /\bgmail\b/i,
       /\bemail\b/i,

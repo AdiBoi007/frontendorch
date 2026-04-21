@@ -27,6 +27,9 @@ export function selectDomains(pageContext: PageContext, intent: QueryIntent): Re
 
   if (intent === "original_source" || intent === "doc_local") {
     overrides.includeDocuments = true;
+    if (!isClientContext) {
+      overrides.includeCommunications = true;
+    }
   }
   if (!isClientContext && (intent === "change_history" || intent === "comparison_or_diff")) {
     overrides.includeChanges = true;

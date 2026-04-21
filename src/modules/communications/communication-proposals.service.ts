@@ -45,6 +45,7 @@ export class CommunicationProposalsService {
       insight: InsightRecord;
       messageId: string;
       validatedRefs: ValidatedRefs;
+      sourceKind?: "message" | "thread";
     }
   ) {
     if (actorUserId) {
@@ -69,12 +70,9 @@ export class CommunicationProposalsService {
       brainNodeIds: input.validatedRefs.brainNodeIds
     });
     if (deduped) {
-      await this.prisma.messageInsight.update({
-        where: { id: insightId },
-        data: {
-          status: "superseded",
-          generatedProposalId: deduped.id
-        }
+      await this.updateInsightConversion(input.sourceKind ?? "message", insightId, {
+        status: "superseded",
+        generatedProposalId: deduped.id
       });
 
       return {
@@ -168,14 +166,25 @@ export class CommunicationProposalsService {
       ];
       await tx.specChangeLink.createMany({ data: links });
 
-      await tx.messageInsight.update({
-        where: { id: insightId },
-        data: {
-          status: decisionId ? "converted_to_decision" : "converted_to_proposal",
-          generatedProposalId: proposal.id,
-          generatedDecisionId: decisionId
-        }
-      });
+      if ((input.sourceKind ?? "message") === "thread") {
+        await tx.threadInsight.update({
+          where: { id: insightId },
+          data: {
+            status: decisionId ? "converted_to_decision" : "converted_to_proposal",
+            generatedProposalId: proposal.id,
+            generatedDecisionId: decisionId
+          }
+        });
+      } else {
+        await tx.messageInsight.update({
+          where: { id: insightId },
+          data: {
+            status: decisionId ? "converted_to_decision" : "converted_to_proposal",
+            generatedProposalId: proposal.id,
+            generatedDecisionId: decisionId
+          }
+        });
+      }
 
       return { proposalId: proposal.id, decisionId };
     });
@@ -259,5 +268,27 @@ export class CommunicationProposalsService {
 
   private toJsonObject(value: unknown) {
     return value && typeof value === "object" ? (value as object) : undefined;
+  }
+
+  private async updateInsightConversion(
+    sourceKind: "message" | "thread",
+    insightId: string,
+    data: {
+      status: "superseded";
+      generatedProposalId: string;
+    }
+  ) {
+    if (sourceKind === "thread") {
+      await this.prisma.threadInsight.update({
+        where: { id: insightId },
+        data
+      });
+      return;
+    }
+
+    await this.prisma.messageInsight.update({
+      where: { id: insightId },
+      data
+    });
   }
 }

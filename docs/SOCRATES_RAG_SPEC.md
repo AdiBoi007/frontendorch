@@ -604,18 +604,41 @@ The frontend must never create or modify them.
 - original evidence still available for provenance queries
 
 ## 17.3 Golden evaluation set
-Build a small evaluation set with questions like:
-- When was this feature first mentioned?
-- What is the current accepted requirement?
-- Which Slack message changed this?
-- Summarize this module for engineering.
-- Why does the Brain say this section changed?
 
-Measure:
-- citation correctness
-- source-open success rate
-- answer usefulness
-- hallucination rate
+This repository now includes a deterministic Socrates regression harness under `evals/socrates/` with CI-friendly runners:
+
+- `npm run eval:socrates`
+- `npm run eval:all`
+
+Case format is JSONL. Each case specifies:
+
+- fixture world/setup
+- session page context and role
+- query
+- required current-truth or provenance behavior
+- allowed/required citation types
+- required open-target types
+- required/forbidden answer phrases
+
+Implemented categories:
+
+- `current_truth` — accepted Product Brain / accepted changes must override stale originals
+- `provenance` — origin questions must prefer original docs/messages over summaries
+- `communication_origin` — source message/thread lookup must work when evidence exists
+- `citation_correctness` — citations/open-targets must point to real entities
+- `role_safety` — client-safe queries must not leak internal evidence
+
+Deterministic scoring dimensions:
+
+- `answer_behavior_pass`
+- `citation_presence_pass`
+- `citation_type_pass`
+- `open_target_pass`
+- `truth_precedence_pass`
+- `provenance_precedence_pass`
+- `role_safety_pass`
+
+Reports are emitted as JSON and Markdown under `evals/outputs/`.
 
 ---
 

@@ -7,3 +7,6 @@ storage/
 .vault/
 .DS_Store
 Thumbs.db
+evals/outputs/*.json
+evals/outputs/*.md
+!evals/outputs/.gitkeep

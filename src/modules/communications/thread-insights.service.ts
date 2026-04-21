@@ -60,16 +60,17 @@ export class ThreadInsightsService {
       prompt,
       fallback: () => this.threadFallback(context.thread.subject ?? "", context.threadMessages.map((item) => item.bodyText).join("\n"))
     });
+    const groundedOutput = this.hydrateFallbackRefs(output, context.candidateSections, context.candidateBrainNodes);
 
     const sectionIds = new Set(context.candidateSections.map((item) => item.id));
     const nodeIds = new Set(context.candidateBrainNodes.map((item) => item.id));
     const validatedRefs = {
-      documentSectionIds: output.affectedDocumentSections.map((item) => item.id).filter((id) => sectionIds.has(id)),
-      brainNodeIds: output.affectedBrainNodes.map((item) => item.id).filter((id) => nodeIds.has(id))
+      documentSectionIds: groundedOutput.affectedDocumentSections.map((item) => item.id).filter((id) => sectionIds.has(id)),
+      brainNodeIds: groundedOutput.affectedBrainNodes.map((item) => item.id).filter((id) => nodeIds.has(id))
     };
-    const confidence = this.adjustConfidence(output, validatedRefs.documentSectionIds.length, validatedRefs.brainNodeIds.length);
-    const shouldCreateProposal = this.shouldCreateProposal(output, confidence, validatedRefs.documentSectionIds.length, validatedRefs.brainNodeIds.length);
-    const shouldCreateDecision = ["decision", "approval"].includes(output.insightType) && confidence >= 0.75;
+    const confidence = this.adjustConfidence(groundedOutput, validatedRefs.documentSectionIds.length, validatedRefs.brainNodeIds.length);
+    const shouldCreateProposal = this.shouldCreateProposal(groundedOutput, confidence, validatedRefs.documentSectionIds.length, validatedRefs.brainNodeIds.length);
+    const shouldCreateDecision = ["decision", "approval"].includes(groundedOutput.insightType) && confidence >= 0.75;
 
     const insight = await this.prisma.threadInsight.upsert({
       where: {
@@ -84,39 +85,39 @@ export class ThreadInsightsService {
         provider: context.thread.provider,
         threadId: context.thread.id,
         threadStateHash: context.threadStateHash,
-        insightType: output.insightType,
+        insightType: groundedOutput.insightType,
         status: "detected",
-        summary: output.summary,
+        summary: groundedOutput.summary,
         confidence: new Prisma.Decimal(confidence.toFixed(3)),
         shouldCreateProposal,
         shouldCreateDecision,
-        proposalType: output.proposalType,
+        proposalType: groundedOutput.proposalType,
         sourceMessageIdsJson: context.threadMessages.map((item) => item.id),
         affectedRefsJson: validatedRefs,
         evidenceJson: { sourceMessageIds: context.threadMessages.map((item) => item.id) },
-        oldUnderstandingJson: toJsonInput(output.oldUnderstanding ?? undefined),
-        newUnderstandingJson: toJsonInput(output.newUnderstanding ?? undefined),
-        decisionStatement: output.decisionStatement,
-        impactSummaryJson: toJsonInput(output.impactSummary ?? undefined),
-        uncertaintyJson: output.uncertainty,
+        oldUnderstandingJson: toJsonInput(groundedOutput.oldUnderstanding ?? undefined),
+        newUnderstandingJson: toJsonInput(groundedOutput.newUnderstanding ?? undefined),
+        decisionStatement: groundedOutput.decisionStatement,
+        impactSummaryJson: toJsonInput(groundedOutput.impactSummary ?? undefined),
+        uncertaintyJson: groundedOutput.uncertainty,
         modelJson: { provider: this.generationProvider.constructor.name }
       },
       update: {
-        insightType: output.insightType,
+        insightType: groundedOutput.insightType,
         status: "detected",
-        summary: output.summary,
+        summary: groundedOutput.summary,
         confidence: new Prisma.Decimal(confidence.toFixed(3)),
         shouldCreateProposal,
         shouldCreateDecision,
-        proposalType: output.proposalType,
+        proposalType: groundedOutput.proposalType,
         sourceMessageIdsJson: context.threadMessages.map((item) => item.id),
         affectedRefsJson: validatedRefs,
         evidenceJson: { sourceMessageIds: context.threadMessages.map((item) => item.id) },
-        oldUnderstandingJson: toJsonInput(output.oldUnderstanding ?? undefined),
-        newUnderstandingJson: toJsonInput(output.newUnderstanding ?? undefined),
-        decisionStatement: output.decisionStatement,
-        impactSummaryJson: toJsonInput(output.impactSummary ?? undefined),
-        uncertaintyJson: output.uncertainty,
+        oldUnderstandingJson: toJsonInput(groundedOutput.oldUnderstanding ?? undefined),
+        newUnderstandingJson: toJsonInput(groundedOutput.newUnderstanding ?? undefined),
+        decisionStatement: groundedOutput.decisionStatement,
+        impactSummaryJson: toJsonInput(groundedOutput.impactSummary ?? undefined),
+        uncertaintyJson: groundedOutput.uncertainty,
         modelJson: { provider: this.generationProvider.constructor.name }
       }
     });
@@ -291,7 +292,8 @@ export class ThreadInsightsService {
       validatedRefs: {
         documentSectionIds: Array.isArray(refs.documentSectionIds) ? refs.documentSectionIds : [],
         brainNodeIds: Array.isArray(refs.brainNodeIds) ? refs.brainNodeIds : []
-      }
+      },
+      sourceKind: "thread"
     });
   }
 
@@ -349,6 +351,29 @@ export class ThreadInsightsService {
       };
     }
 
+    if (text.includes("decided") || text.includes("go with") || text.includes("let's go with")) {
+      return {
+        insightType: "decision",
+        summary: "Thread contains a concrete decision signal.",
+        confidence: 0.8,
+        shouldCreateProposal: true,
+        shouldCreateDecision: true,
+        proposalType: "decision_change",
+        affectedDocumentSections: [],
+        affectedBrainNodes: [],
+        oldUnderstanding: null,
+        newUnderstanding: null,
+        decisionStatement: combinedText,
+        impactSummary: {
+          scopeImpact: "medium",
+          engineeringImpact: "medium",
+          clientExpectationImpact: "high",
+          summary: "Thread appears to contain a concrete decision."
+        },
+        uncertainty: []
+      };
+    }
+
     return {
       insightType: "info",
       summary: "Thread is informational and does not clearly change accepted truth.",
@@ -368,6 +393,26 @@ export class ThreadInsightsService {
         summary: "No clear truth-affecting change was detected."
       },
       uncertainty: []
+    };
+  }
+
+  private hydrateFallbackRefs(
+    output: CommunicationInsightOutput,
+    candidateSections: Array<{ id: string }>,
+    candidateBrainNodes: Array<{ id: string }>
+  ): CommunicationInsightOutput {
+    if (
+      output.affectedDocumentSections.length > 0 ||
+      output.affectedBrainNodes.length > 0 ||
+      !["requirement_change", "clarification", "decision", "approval", "contradiction"].includes(output.insightType)
+    ) {
+      return output;
+    }
+
+    return {
+      ...output,
+      affectedDocumentSections: candidateSections.slice(0, 1).map((section) => ({ id: section.id, confidence: output.confidence })),
+      affectedBrainNodes: candidateBrainNodes.slice(0, 1).map((node) => ({ id: node.id, confidence: output.confidence }))
     };
   }
 }

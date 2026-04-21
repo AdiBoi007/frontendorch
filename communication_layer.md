@@ -2480,6 +2480,33 @@ When implementing, always preserve those rules.
 
 ---
 
+## 25A. Automated communication eval harness
+
+This repository now includes a deterministic evaluation harness for communication intelligence under `evals/message_intelligence/` with the runner scripts:
+
+- `npm run eval:messages`
+- `npm run eval:all`
+
+The harness exists to make the communication-layer safety rules enforceable in CI, especially:
+
+- false-positive resistance
+- conservative proposal generation
+- decision-candidate threshold behavior
+- preservation of uncertainty
+- grounding to affected document sections / brain nodes
+- preventing unaccepted communication intelligence from becoming truth
+
+Implemented categories:
+
+- `classification`
+- `false_positive_guard`
+- `proposal_generation`
+- `decision_candidate`
+
+Each case is fixture-backed and machine-scored. A case only passes when every required check passes, including insight type, proposal/decision creation behavior, affected-ref grounding, and uncertainty expectations.
+
+---
+
 ## 26. External provider references (official docs)
 
 Use these official docs when coding providers:

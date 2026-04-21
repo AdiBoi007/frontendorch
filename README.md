@@ -14,6 +14,36 @@ This repository should be built around **those four user-facing surfaces** and t
 
 ---
 
+## Automated evaluation harness
+
+Orchestra now includes a deterministic regression harness for:
+
+- **Socrates**
+- **communication/message intelligence**
+
+The harness is fixture-backed, CI-friendly, and intended to be the authoritative quality gate for:
+
+- current-truth precedence
+- provenance precedence
+- communication-origin lookup
+- citation/open-target correctness
+- role-safe filtering
+- conservative communication classification
+- proposal/de\-cision threshold behavior
+
+Primary commands:
+
+- `npm run eval:socrates`
+- `npm run eval:messages`
+- `npm run eval:all`
+
+Reference docs:
+
+- `evals/README.md`
+- `docs/EVALS.md`
+
+---
+
 ## 1. What Orchestra is now
 
 Orchestra is the **communication source of truth** for software solution companies, devhouses, MVP studios, and similar client-facing software teams.
