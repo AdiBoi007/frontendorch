@@ -124,7 +124,18 @@ function createContext() {
   const dashboardService = {
     getGeneralDashboard: vi.fn(async () => ({
       scope: "general",
-      summary: { activeProjectCount: 1, orgHeadcount: 2, projectsNeedingAttention: [] }
+      summary: {
+        activeProjectCount: 1,
+        orgHeadcount: 2,
+        projectsNeedingAttention: [],
+        communication: {
+          connectedProviderCount: 1,
+          needsReviewCount: 1,
+          blockerCount: 0,
+          contradictionCount: 0,
+          lastSyncedAt: null
+        }
+      }
     })),
     getProjectDashboard: vi.fn(async () => ({
       scope: "project",
@@ -134,6 +145,7 @@ function createContext() {
       brain: { freshnessState: "current", latestVersionId: "brain-1", latestVersionNumber: 1, acceptedAt: null, latestAcceptedChangeAt: null, latestAcceptedDecisionAt: null },
       changes: { pendingCount: 0, acceptedRecentCount: 0, latestAcceptedAt: null, pendingSummaries: [], recentAccepted: [] },
       decisions: { openCount: 0, latestAcceptedAt: null, openItems: [] },
+      communication: { connectedProviders: ["manual_import"], providerCount: 1, lastSyncedAt: null, insightCount: 1, needsReviewCount: 1, blockerCount: 0, contradictionCount: 0, connectorStatuses: [] },
       attention: { score: 0, label: "healthy", reasons: [] },
       quickLinks: { dashboardPath: "/projects/project-1/dashboard", brainPath: "/projects/project-1/brain/current", documentsPath: "/projects/project-1/documents", docViewerPath: null, docViewerState: null, brainViewerState: { pageContext: "brain_overview", selectedRefType: "dashboard_scope", selectedRefId: "project-1" } },
       recentActivity: { latestAcceptedChangeAt: null, latestDecisionAt: null, latestDocumentProcessedAt: null }
@@ -177,6 +189,7 @@ function createContext() {
       update: vi.fn(async () => ({ id: "connector-1", accountLabel: "Renamed", status: "connected" })),
       connect: vi.fn(async () => ({ connectorId: "connector-1", provider: "manual_import", status: "connected", redirectUrl: null })),
       handleOAuthCallback: vi.fn(async () => ({ connectorId: "connector-1", provider: "slack", status: "connected", syncRunId: "sync-1", redirectAfter: null })),
+      handleOAuthCallbackFromState: vi.fn(async () => ({ connectorId: "connector-2", provider: "outlook", status: "connected", syncRunId: "sync-2", redirectAfter: null })),
       handleWebhook: vi.fn(async () => ({ statusCode: 200, body: { ok: true } })),
       revoke: vi.fn(async () => ({ id: "connector-1", status: "revoked" })),
       listSyncRuns: vi.fn(async () => [{ id: "sync-1", status: "completed" }])
@@ -297,6 +310,13 @@ function createContext() {
       GOOGLE_CLIENT_SECRET: "google-client-secret",
       GOOGLE_REDIRECT_URI: "http://localhost:3000/v1/oauth/google/callback",
       GOOGLE_PUBSUB_TOPIC: undefined,
+      MICROSOFT_CLIENT_ID: "microsoft-client-id",
+      MICROSOFT_CLIENT_SECRET: "microsoft-client-secret",
+      MICROSOFT_REDIRECT_URI: "http://localhost:3000/v1/oauth/microsoft/callback",
+      MICROSOFT_TENANT_ID: "common",
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: "whatsapp-verify-token",
+      WHATSAPP_APP_SECRET: "whatsapp-app-secret",
+      WHATSAPP_READINESS_MODE: "webhook_inbound",
       CONNECTOR_CREDENTIAL_VAULT_MODE: "memory",
       CONNECTOR_OAUTH_STATE_SECRET: "test-connector-oauth-state-secret",
       CONNECTOR_SYNC_BATCH_SIZE: 100,
@@ -764,6 +784,74 @@ describe("route contracts", () => {
       "slack",
       expect.objectContaining({
         body: expect.objectContaining({ type: "url_verification" })
+      })
+    );
+  });
+
+  it("supports Microsoft callback plus Outlook, Teams, and WhatsApp webhooks", async () => {
+    const microsoftCallback = await app.inject({
+      method: "GET",
+      url: "/v1/oauth/microsoft/callback?code=test-code&state=test-state"
+    });
+
+    expect(microsoftCallback.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleOAuthCallbackFromState).toHaveBeenCalledWith(
+      { code: "test-code", state: "test-state" },
+      ["outlook", "microsoft_teams"]
+    );
+
+    const outlookWebhook = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/outlook?validationToken=verify-me",
+      payload: { value: [] }
+    });
+
+    expect(outlookWebhook.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleWebhook).toHaveBeenCalledWith(
+      "outlook",
+      expect.objectContaining({
+        query: expect.objectContaining({ validationToken: "verify-me" })
+      })
+    );
+
+    const teamsWebhook = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/teams",
+      payload: { value: [] }
+    });
+
+    expect(teamsWebhook.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleWebhook).toHaveBeenCalledWith(
+      "microsoft_teams",
+      expect.objectContaining({
+        body: expect.objectContaining({ value: [] })
+      })
+    );
+
+    const whatsappChallenge = await app.inject({
+      method: "GET",
+      url: "/v1/webhooks/whatsapp-business?hub.mode=subscribe&hub.verify_token=whatsapp-verify-token&hub.challenge=challenge-value"
+    });
+
+    expect(whatsappChallenge.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleWebhook).toHaveBeenCalledWith(
+      "whatsapp_business",
+      expect.objectContaining({
+        query: expect.objectContaining({ "hub.challenge": "challenge-value" })
+      })
+    );
+
+    const whatsappWebhook = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/whatsapp-business",
+      payload: { entry: [] }
+    });
+
+    expect(whatsappWebhook.statusCode).toBe(200);
+    expect(context.services.communicationsService.connectors.handleWebhook).toHaveBeenCalledWith(
+      "whatsapp_business",
+      expect.objectContaining({
+        body: expect.objectContaining({ entry: [] })
       })
     );
   });

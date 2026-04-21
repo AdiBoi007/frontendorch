@@ -2434,6 +2434,38 @@ For implementation-grounded details of the finished C3 build, use:
 
 ---
 
+## 24D. C4 implementation status in this repo
+
+Build C4 is now implemented on top of C1, C2, and C3 in this repository.
+
+What C4 implements:
+
+- Outlook connector via Microsoft Graph
+- Microsoft Teams connector via Microsoft Graph
+- WhatsApp Business inbound/webhook verification and normalization
+- shared Microsoft OAuth callback handling
+- provider sync runtime locking so one connector cannot run multiple live syncs at once
+- retry-after aware provider sync retry/backoff handling
+- communication-summary integration into dashboard snapshots
+- additional observability counters for syncs, rate limits, webhooks, and connector creation
+
+Current repo-specific clarifications:
+
+- Outlook and Teams are functional with mocked/provider-fixture coverage and use the shared `/v1/oauth/microsoft/callback` route
+- Outlook sync uses Microsoft Graph mail folder message reads and stores metadata-only attachments
+- Teams sync ingests configured team/channel roots and replies and stores them in the provider-agnostic thread/message model
+- WhatsApp Business is inbound/webhook-first; manual sync remains a safe no-op summary path
+- WhatsApp status-only events do not create user-message evidence rows
+- Gmail watch/webhook flow is still deferred; Gmail remains polling/manual incremental in the current repo
+- Microsoft/WhatsApp webhook endpoints are provider-ready and deduped, but full subscription lifecycle automation is still a later hardening layer
+
+For implementation-grounded details of the finished C4 build, use:
+
+- `feature5.md`
+- `communication_layer_C4.md`
+
+---
+
 ## 25. Source-of-truth references inside the repo
 
 This file is specifically aligned to these repo concepts:

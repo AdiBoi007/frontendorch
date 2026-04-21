@@ -11,6 +11,7 @@ import type { ProjectService } from "../projects/service.js";
 import { AuditService } from "../audit/service.js";
 import type { CommunicationProviderAdapter } from "./providers/provider.interface.js";
 import { MessageIngestionService } from "./message-ingestion.service.js";
+import type { TelemetryService } from "../../lib/observability/telemetry.js";
 
 export class SyncService {
   constructor(
@@ -21,7 +22,8 @@ export class SyncService {
     private readonly jobs: JobDispatcher,
     private readonly credentialVault: CredentialVault,
     private readonly adapters: Map<string, CommunicationProviderAdapter>,
-    private readonly ingestion: MessageIngestionService
+    private readonly ingestion: MessageIngestionService,
+    private readonly telemetry: TelemetryService
   ) {}
 
   async queueSync(projectId: string, connectorId: string, actorUserId: string, syncType: "manual" | "webhook" | "backfill" | "incremental") {
@@ -104,6 +106,11 @@ export class SyncService {
     });
 
     await this.jobs.enqueue(JobNames.syncCommunicationConnector, payload, key);
+    this.telemetry.increment("communication_sync_runs_total", {
+      provider: connector.provider,
+      sync_type: input.syncType,
+      status: "queued"
+    });
     await this.auditService.record({
       orgId: project.orgId,
       projectId: input.projectId,
@@ -130,6 +137,7 @@ export class SyncService {
     webhookPayload?: Record<string, unknown>;
     idempotencyKey?: string;
   }) {
+    const startedAt = process.hrtime.bigint();
     const connector = await this.prisma.communicationConnector.findFirstOrThrow({
       where: { id: input.connectorId, projectId: input.projectId }
     });
@@ -140,6 +148,41 @@ export class SyncService {
     const adapter = this.adapters.get(connector.provider);
     if (!adapter) {
       throw new AppError(404, "Communication provider is not supported", "communication_provider_not_supported");
+    }
+
+    const competingRun = await this.prisma.communicationSyncRun.findFirst({
+      where: {
+        connectorId: connector.id,
+        status: "running",
+        id: { not: input.syncRunId }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    if (competingRun) {
+      await this.prisma.communicationSyncRun.update({
+        where: { id: input.syncRunId },
+        data: {
+          status: "partial",
+          startedAt: new Date(),
+          finishedAt: new Date(),
+          summaryJson: {
+            skipped: true,
+            reason: "connector_locked",
+            competingSyncRunId: competingRun.id
+          }
+        }
+      });
+      if (input.idempotencyKey) {
+        await this.prisma.jobRun.update({
+          where: { idempotencyKey: input.idempotencyKey },
+          data: { status: "completed", finishedAt: new Date(), lastError: null }
+        });
+      }
+      return {
+        skipped: true,
+        reason: "connector_locked",
+        competingSyncRunId: competingRun.id
+      };
     }
 
     await this.prisma.communicationSyncRun.update({
@@ -177,7 +220,7 @@ export class SyncService {
         connector.id,
         connector.credentialsRef
       );
-      const result = await adapter.sync({
+      const result = await this.runProviderSyncWithRetry(adapter, {
         projectId: input.projectId,
         connector,
         credential,
@@ -230,7 +273,7 @@ export class SyncService {
       await this.prisma.communicationSyncRun.update({
         where: { id: input.syncRunId },
         data: {
-          status: "completed",
+          status: result.status === "partial" ? "partial" : "completed",
           finishedAt: new Date(),
           cursorAfterJson:
             result.cursorAfter == null ? Prisma.JsonNull : (result.cursorAfter as Prisma.InputJsonValue),
@@ -285,6 +328,16 @@ export class SyncService {
           deletedMessageCount: result.deletedProviderMessageIds?.length ?? 0
         }
       });
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      this.telemetry.increment("communication_sync_runs_total", {
+        provider: connector.provider,
+        sync_type: input.syncType,
+        status: result.status === "partial" ? "partial" : "completed"
+      });
+      this.telemetry.observeDuration("communication_sync_duration_ms", durationMs, {
+        provider: connector.provider,
+        sync_type: input.syncType
+      });
       await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, input.projectId, "communication_sync_completed");
     } catch (error) {
       await this.prisma.communicationSyncRun.update({
@@ -330,7 +383,65 @@ export class SyncService {
           errorMessage: error instanceof Error ? error.message : "Unknown communication sync error"
         }
       });
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      this.telemetry.increment("communication_sync_runs_total", {
+        provider: connector.provider,
+        sync_type: input.syncType,
+        status: "failed"
+      });
+      this.telemetry.increment("communication_sync_failures_total", {
+        provider: connector.provider,
+        sync_type: input.syncType
+      });
+      this.telemetry.observeDuration("communication_sync_duration_ms", durationMs, {
+        provider: connector.provider,
+        sync_type: input.syncType
+      });
       throw error;
     }
+  }
+
+  private async runProviderSyncWithRetry(
+    adapter: CommunicationProviderAdapter,
+    input: Parameters<CommunicationProviderAdapter["sync"]>[0]
+  ) {
+    let attempt = 0;
+    let lastError: unknown = null;
+    const maxAttempts = 3;
+
+    while (attempt < maxAttempts) {
+      attempt += 1;
+      try {
+        return await adapter.sync(input);
+      } catch (error) {
+        lastError = error;
+        const retryAfterMs = this.extractRetryAfterMs(error);
+        if (attempt >= maxAttempts || retryAfterMs == null) {
+          break;
+        }
+
+        this.telemetry.increment("communication_provider_rate_limited_total", {
+          provider: input.connector.provider
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, Math.max(50, retryAfterMs)));
+      }
+    }
+
+    throw lastError;
+  }
+
+  private extractRetryAfterMs(error: unknown) {
+    if (!(error instanceof AppError)) {
+      return null;
+    }
+    if (error.code !== "communication_provider_rate_limited") {
+      return null;
+    }
+    if (!error.details || typeof error.details !== "object") {
+      return 1000;
+    }
+    const retryAfterMs = (error.details as { retryAfterMs?: unknown }).retryAfterMs;
+    return typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs) ? retryAfterMs : 1000;
   }
 }

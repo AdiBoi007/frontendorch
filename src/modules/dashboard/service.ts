@@ -97,6 +97,23 @@ type ProjectQuickLinks = {
   brainViewerState: { pageContext: "brain_overview"; selectedRefType: "dashboard_scope"; selectedRefId: string };
 };
 
+type CommunicationSummary = {
+  connectedProviders: string[];
+  providerCount: number;
+  lastSyncedAt: string | null;
+  insightCount: number;
+  needsReviewCount: number;
+  blockerCount: number;
+  contradictionCount: number;
+  connectorStatuses: Array<{
+    connectorId: string;
+    provider: string;
+    status: string;
+    lastSyncedAt: string | null;
+    lastError: string | null;
+  }>;
+};
+
 type ProjectCard = {
   projectId: string;
   name: string;
@@ -120,6 +137,7 @@ type ProjectCard = {
   brain: BrainSummary;
   changes: ChangeSummary;
   decisions: DecisionSummary;
+  communication: CommunicationSummary;
   attention: AttentionSummary;
   movementLabel: "fast" | "steady" | "slow";
   quickLinks: ProjectQuickLinks;
@@ -154,6 +172,13 @@ type GeneralDashboardPayload = {
       openDecisionCount: number;
     };
     brainFreshness: Record<BrainFreshnessState, number>;
+    communication: {
+      connectedProviderCount: number;
+      needsReviewCount: number;
+      blockerCount: number;
+      contradictionCount: number;
+      lastSyncedAt: string | null;
+    };
   };
   projects: ProjectCard[];
   quickLinks: {
@@ -186,6 +211,7 @@ type ProjectDashboardPayload = {
   brain: BrainSummary;
   changes: ChangeSummary;
   decisions: DecisionSummary;
+  communication: CommunicationSummary;
   attention: AttentionSummary;
   quickLinks: ProjectQuickLinks;
   recentActivity: {
@@ -471,6 +497,15 @@ export class DashboardService {
             orderBy: { versionNumber: "desc" },
             take: 1,
             select: { id: true, versionNumber: true, acceptedAt: true, createdAt: true }
+          },
+          communicationConnectors: {
+            select: { id: true, provider: true, status: true, lastSyncedAt: true, lastError: true }
+          },
+          messageInsights: {
+            where: {
+              status: { in: ["detected", "converted_to_proposal", "converted_to_decision"] }
+            },
+            select: { id: true, insightType: true, generatedProposalId: true }
           }
         }
       })
@@ -494,6 +529,28 @@ export class DashboardService {
         return accumulator;
       },
       { current: 0, processing: 0, stale: 0, blocked: 0 }
+    );
+    const communicationSummary = projectCards.reduce(
+      (accumulator, project) => {
+        accumulator.connectedProviderCount += project.communication.providerCount;
+        accumulator.needsReviewCount += project.communication.needsReviewCount;
+        accumulator.blockerCount += project.communication.blockerCount;
+        accumulator.contradictionCount += project.communication.contradictionCount;
+        if (
+          project.communication.lastSyncedAt &&
+          (!accumulator.lastSyncedAt || project.communication.lastSyncedAt > accumulator.lastSyncedAt)
+        ) {
+          accumulator.lastSyncedAt = project.communication.lastSyncedAt;
+        }
+        return accumulator;
+      },
+      {
+        connectedProviderCount: 0,
+        needsReviewCount: 0,
+        blockerCount: 0,
+        contradictionCount: 0,
+        lastSyncedAt: null as string | null
+      }
     );
 
     return {
@@ -520,7 +577,8 @@ export class DashboardService {
           recentAcceptedCount: projectCards.reduce((sum, project) => sum + project.changes.acceptedRecentCount, 0),
           openDecisionCount: projectCards.reduce((sum, project) => sum + project.decisions.openCount, 0)
         },
-        brainFreshness: freshnessSummary
+        brainFreshness: freshnessSummary,
+        communication: communicationSummary
       },
       projects: projectCards,
       quickLinks: {
@@ -571,6 +629,15 @@ export class DashboardService {
           orderBy: { versionNumber: "desc" },
           take: 1,
           select: { id: true, versionNumber: true, acceptedAt: true, createdAt: true }
+        },
+        communicationConnectors: {
+          select: { id: true, provider: true, status: true, lastSyncedAt: true, lastError: true }
+        },
+        messageInsights: {
+          where: {
+            status: { in: ["detected", "converted_to_proposal", "converted_to_decision"] }
+          },
+          select: { id: true, insightType: true, generatedProposalId: true }
         }
       }
     });
@@ -580,6 +647,7 @@ export class DashboardService {
     const brain = this.buildBrainFreshness(project.artifacts[0] ?? null, documents, project.changeProposals, project.decisions);
     const changes = this.buildChangeSummary(project.changeProposals);
     const decisions = this.buildDecisionSummary(project.decisions);
+    const communication = this.buildCommunicationSummary(project.communicationConnectors, project.messageInsights);
     const attention = this.buildAttention({
       overloadedCount: teamSummary.workload.overloadedCount,
       watchCount: teamSummary.workload.watchCount,
@@ -589,7 +657,10 @@ export class DashboardService {
       failedDocs: documents.counts.failed,
       brainState: brain.freshnessState,
       sourceReadyCount: documents.counts.ready + documents.counts.partial,
-      sourceTotalCount: documents.totalCount
+      sourceTotalCount: documents.totalCount,
+      needsReview: communication.needsReviewCount,
+      blockers: communication.blockerCount,
+      contradictions: communication.contradictionCount
     });
 
     return {
@@ -611,6 +682,7 @@ export class DashboardService {
       brain,
       changes,
       decisions,
+      communication,
       attention,
       quickLinks: this.buildProjectQuickLinks(project.id, project.documents),
       recentActivity: {
@@ -631,12 +703,15 @@ export class DashboardService {
     changeProposals: Parameters<DashboardService["buildChangeSummary"]>[0];
     decisions: Parameters<DashboardService["buildDecisionSummary"]>[0];
     artifacts: Array<Pick<ArtifactVersion, "id" | "versionNumber" | "acceptedAt" | "createdAt">>;
+    communicationConnectors: Array<{ id: string; provider: string; status: string; lastSyncedAt: Date | null; lastError: string | null }>;
+    messageInsights: Array<{ id: string; insightType: string; generatedProposalId: string | null }>;
   }): ProjectCard {
     const teamSummary = this.buildTeamSummary(project.members);
     const documents = this.buildDocumentReadiness(project.documents);
     const brain = this.buildBrainFreshness(project.artifacts[0] ?? null, documents, project.changeProposals, project.decisions);
     const changes = this.buildChangeSummary(project.changeProposals);
     const decisions = this.buildDecisionSummary(project.decisions);
+    const communication = this.buildCommunicationSummary(project.communicationConnectors, project.messageInsights);
     const attention = this.buildAttention({
       overloadedCount: teamSummary.workload.overloadedCount,
       watchCount: teamSummary.workload.watchCount,
@@ -646,7 +721,10 @@ export class DashboardService {
       failedDocs: documents.counts.failed,
       brainState: brain.freshnessState,
       sourceReadyCount: documents.counts.ready + documents.counts.partial,
-      sourceTotalCount: documents.totalCount
+      sourceTotalCount: documents.totalCount,
+      needsReview: communication.needsReviewCount,
+      blockers: communication.blockerCount,
+      contradictions: communication.contradictionCount
     });
 
     return {
@@ -672,6 +750,7 @@ export class DashboardService {
       brain,
       changes,
       decisions,
+      communication,
       attention,
       movementLabel: this.buildMovementLabel(changes, documents, brain),
       quickLinks: this.buildProjectQuickLinks(project.id, project.documents)
@@ -993,6 +1072,9 @@ export class DashboardService {
     brainState: BrainFreshnessState;
     sourceReadyCount: number;
     sourceTotalCount: number;
+    needsReview: number;
+    blockers: number;
+    contradictions: number;
   }): AttentionSummary {
     const reasons: string[] = [];
     let score = 0;
@@ -1008,6 +1090,18 @@ export class DashboardService {
     if (input.pendingChanges > 0) {
       score += Math.min(4, input.pendingChanges);
       reasons.push(`${input.pendingChanges} pending change${input.pendingChanges === 1 ? "" : "s"}`);
+    }
+    if (input.needsReview > 0) {
+      score += Math.min(3, input.needsReview);
+      reasons.push(`${input.needsReview} communication insight${input.needsReview === 1 ? "" : "s"} need review`);
+    }
+    if (input.blockers > 0) {
+      score += Math.min(4, input.blockers * 2);
+      reasons.push(`${input.blockers} communication blocker${input.blockers === 1 ? "" : "s"}`);
+    }
+    if (input.contradictions > 0) {
+      score += Math.min(3, input.contradictions);
+      reasons.push(`${input.contradictions} unresolved contradiction${input.contradictions === 1 ? "" : "s"}`);
     }
     if (input.openDecisions > 0) {
       score += Math.min(3, input.openDecisions);
@@ -1039,6 +1133,33 @@ export class DashboardService {
       score,
       label: score >= 7 ? "attention" : score >= 3 ? "watch" : "healthy",
       reasons
+    };
+  }
+
+  private buildCommunicationSummary(
+    connectors: Array<{ id: string; provider: string; status: string; lastSyncedAt: Date | null; lastError: string | null }>,
+    insights: Array<{ id: string; insightType: string; generatedProposalId: string | null }>
+  ): CommunicationSummary {
+    const lastSyncedAt = connectors
+      .map((connector) => connector.lastSyncedAt?.toISOString() ?? null)
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => right.localeCompare(left))[0] ?? null;
+
+    return {
+      connectedProviders: connectors.filter((connector) => connector.status === "connected").map((connector) => connector.provider),
+      providerCount: connectors.filter((connector) => connector.status === "connected").length,
+      lastSyncedAt,
+      insightCount: insights.length,
+      needsReviewCount: insights.filter((insight) => !insight.generatedProposalId).length,
+      blockerCount: insights.filter((insight) => insight.insightType === "blocker").length,
+      contradictionCount: insights.filter((insight) => insight.insightType === "contradiction").length,
+      connectorStatuses: connectors.map((connector) => ({
+        connectorId: connector.id,
+        provider: connector.provider,
+        status: connector.status,
+        lastSyncedAt: connector.lastSyncedAt?.toISOString() ?? null,
+        lastError: connector.lastError
+      }))
     };
   }
 

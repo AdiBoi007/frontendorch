@@ -52,6 +52,13 @@ export const oauthCallbackQuerySchema = z.object({
   error: z.string().optional()
 });
 
+export const webhookChallengeQuerySchema = z.object({
+  validationToken: z.string().optional(),
+  "hub.mode": z.string().optional(),
+  "hub.verify_token": z.string().optional(),
+  "hub.challenge": z.string().optional()
+});
+
 export const threadParamsSchema = z.object({
   projectId: z.string().uuid(),
   threadId: z.string().uuid()

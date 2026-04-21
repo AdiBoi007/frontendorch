@@ -11,6 +11,7 @@ import type { ProjectService } from "../projects/service.js";
 import { AuditService } from "../audit/service.js";
 import type { JobDispatcher } from "../../lib/jobs/types.js";
 import type { SyncService } from "./sync.service.js";
+import type { TelemetryService } from "../../lib/observability/telemetry.js";
 
 export class ConnectorsService {
   constructor(
@@ -21,6 +22,7 @@ export class ConnectorsService {
     private readonly jobs: JobDispatcher,
     private readonly credentialVault: CredentialVault,
     private readonly adapters: Map<string, CommunicationProviderAdapter>,
+    private readonly telemetry: TelemetryService,
     private syncService?: SyncService
   ) {}
 
@@ -173,6 +175,7 @@ export class ConnectorsService {
       entityId: connector.id,
       payload: { provider, status: connector.status }
     });
+    this.telemetry.increment("communication_connectors_total", { provider, status: connector.status });
     await enqueueProjectDashboardRefreshByProjectId(this.prisma, this.jobs, projectId, "communication_connector_created");
 
     return {
@@ -272,6 +275,23 @@ export class ConnectorsService {
     };
   }
 
+  async handleOAuthCallbackFromState(
+    query: { code?: string; state?: string; error?: string },
+    allowedProviders: CommunicationProvider[]
+  ) {
+    if (!query.state) {
+      throw new AppError(400, "OAuth callback is missing state", "oauth_callback_invalid");
+    }
+
+    const statePayload = parseAndVerifyOAuthState(this.env, query.state);
+    const provider = statePayload.provider as CommunicationProvider;
+    if (!allowedProviders.includes(provider)) {
+      throw new AppError(400, "OAuth callback provider is not allowed on this endpoint", "oauth_callback_invalid");
+    }
+
+    return this.handleOAuthCallback(provider, query);
+  }
+
   async update(projectId: string, connectorId: string, actorUserId: string, body: { accountLabel?: string; config?: Record<string, unknown> }) {
     await ensureCommunicationManager(this.projectService, projectId, actorUserId);
     const connector = await this.prisma.communicationConnector.findFirstOrThrow({
@@ -350,6 +370,7 @@ export class ConnectorsService {
       headers: Record<string, string | string[] | undefined>;
       rawBody: string;
       body: unknown;
+      query?: Record<string, string | string[] | undefined>;
     }
   ) {
     const adapter = this.adapters.get(provider);
@@ -370,6 +391,7 @@ export class ConnectorsService {
       headers: input.headers,
       rawBody: input.rawBody,
       body: input.body,
+      query: input.query,
       connectors
     });
 
@@ -393,6 +415,7 @@ export class ConnectorsService {
         where: { id: existing.id },
         data: { status: "ignored_duplicate" }
       });
+      this.telemetry.increment("communication_webhook_duplicates_total", { provider });
       return { statusCode: 200, body: { ok: true, duplicate: true } };
     }
 
@@ -436,6 +459,10 @@ export class ConnectorsService {
       where: { id: created.id },
       data: { status: "processed", processedAt: new Date() }
     });
+    this.telemetry.increment("communication_webhook_events_total", {
+      provider,
+      event_type: verification.eventType ?? "webhook_event"
+    });
 
     return { statusCode: 200, body: { ok: true } };
   }
@@ -473,6 +500,9 @@ export class ConnectorsService {
     }
     if (provider === "gmail") {
       return this.env.GOOGLE_REDIRECT_URI ?? `${this.env.APP_BASE_URL}/v1/oauth/google/callback`;
+    }
+    if (provider === "outlook" || provider === "microsoft_teams") {
+      return this.env.MICROSOFT_REDIRECT_URI ?? `${this.env.APP_BASE_URL}/v1/oauth/microsoft/callback`;
     }
     throw new AppError(400, "Unsupported OAuth provider", "oauth_provider_not_supported");
   }

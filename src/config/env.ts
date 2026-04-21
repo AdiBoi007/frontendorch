@@ -41,6 +41,13 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
   GOOGLE_PUBSUB_TOPIC: z.string().optional(),
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_REDIRECT_URI: z.string().url().optional(),
+  MICROSOFT_TENANT_ID: z.string().default("common"),
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
+  WHATSAPP_READINESS_MODE: z.enum(["disabled", "webhook_inbound"]).default("disabled"),
   CONNECTOR_CREDENTIAL_VAULT_MODE: z.enum(["memory", "encrypted_file"]).default("encrypted_file"),
   CONNECTOR_OAUTH_STATE_SECRET: z.string().min(16).default("change_me_connector_state_secret"),
   CONNECTOR_SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
@@ -84,6 +91,10 @@ const envSchema = z.object({
     {
       name: "Google",
       fields: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"] as const
+    },
+    {
+      name: "Microsoft",
+      fields: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_REDIRECT_URI"] as const
     }
   ];
 

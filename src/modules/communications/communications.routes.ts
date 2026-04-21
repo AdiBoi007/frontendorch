@@ -13,6 +13,7 @@ import {
   projectParamsSchema,
   providerConnectParamsSchema,
   syncQuerySchema,
+  webhookChallengeQuerySchema,
   threadListQuerySchema,
   threadParamsSchema,
   timelineQuerySchema
@@ -31,11 +32,77 @@ export const registerCommunicationRoutes: FastifyPluginAsync = async (app) => {
     return { data, meta: null, error: null };
   });
 
-  app.post("/webhooks/slack", async (request, reply) => {
+  app.get("/oauth/microsoft/callback", async (request) => {
+    const query = oauthCallbackQuerySchema.parse(request.query);
+    const data =
+      await request.appContext.services.communicationsService.connectors.handleOAuthCallbackFromState(query, [
+        "outlook",
+        "microsoft_teams"
+      ]);
+    return { data, meta: null, error: null };
+  });
+
+  app.post("/webhooks/slack", { bodyLimit: 1024 * 1024 }, async (request, reply) => {
     const result = await request.appContext.services.communicationsService.connectors.handleWebhook("slack", {
       headers: request.headers,
       rawBody: request.rawBody ?? JSON.stringify(request.body ?? {}),
-      body: request.body
+      body: request.body,
+      query: request.query as Record<string, string | string[] | undefined>
+    });
+    if (result.statusCode) {
+      reply.code(result.statusCode);
+    }
+    return result.body;
+  });
+
+  app.post("/webhooks/outlook", { bodyLimit: 1024 * 1024 }, async (request, reply) => {
+    webhookChallengeQuerySchema.parse(request.query);
+    const result = await request.appContext.services.communicationsService.connectors.handleWebhook("outlook", {
+      headers: request.headers,
+      rawBody: request.rawBody ?? JSON.stringify(request.body ?? {}),
+      body: request.body,
+      query: request.query as Record<string, string | string[] | undefined>
+    });
+    if (result.statusCode) {
+      reply.code(result.statusCode);
+    }
+    return result.body;
+  });
+
+  app.post("/webhooks/teams", { bodyLimit: 1024 * 1024 }, async (request, reply) => {
+    webhookChallengeQuerySchema.parse(request.query);
+    const result = await request.appContext.services.communicationsService.connectors.handleWebhook("microsoft_teams", {
+      headers: request.headers,
+      rawBody: request.rawBody ?? JSON.stringify(request.body ?? {}),
+      body: request.body,
+      query: request.query as Record<string, string | string[] | undefined>
+    });
+    if (result.statusCode) {
+      reply.code(result.statusCode);
+    }
+    return result.body;
+  });
+
+  app.get("/webhooks/whatsapp-business", async (request, reply) => {
+    webhookChallengeQuerySchema.parse(request.query);
+    const result = await request.appContext.services.communicationsService.connectors.handleWebhook("whatsapp_business", {
+      headers: request.headers,
+      rawBody: request.rawBody ?? "",
+      body: request.body,
+      query: request.query as Record<string, string | string[] | undefined>
+    });
+    if (result.statusCode) {
+      reply.code(result.statusCode);
+    }
+    return result.body;
+  });
+
+  app.post("/webhooks/whatsapp-business", { bodyLimit: 1024 * 1024 }, async (request, reply) => {
+    const result = await request.appContext.services.communicationsService.connectors.handleWebhook("whatsapp_business", {
+      headers: request.headers,
+      rawBody: request.rawBody ?? JSON.stringify(request.body ?? {}),
+      body: request.body,
+      query: request.query as Record<string, string | string[] | undefined>
     });
     if (result.statusCode) {
       reply.code(result.statusCode);

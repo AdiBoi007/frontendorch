@@ -62,7 +62,9 @@ describe("DashboardService", () => {
             ],
             changeProposals: [{ id: "proposal-1", title: "Change", summary: "Needs review", status: "needs_review", acceptedAt: null }],
             decisions: [{ id: "decision-1", title: "Decision", status: "open", acceptedAt: null }],
-            artifacts: []
+            artifacts: [],
+            communicationConnectors: [],
+            messageInsights: []
           }
         ])
       }
@@ -105,6 +107,7 @@ describe("DashboardService", () => {
         brain: { freshnessState: "current", latestVersionId: "brain-1", latestVersionNumber: 2, acceptedAt: null, latestAcceptedChangeAt: null, latestAcceptedDecisionAt: null },
         changes: { pendingCount: 0, acceptedRecentCount: 0, latestAcceptedAt: null, pendingSummaries: [], recentAccepted: [] },
         decisions: { openCount: 0, latestAcceptedAt: null, openItems: [] },
+        communication: { connectedProviders: [], providerCount: 0, lastSyncedAt: null, insightCount: 0, needsReviewCount: 0, blockerCount: 0, contradictionCount: 0, connectorStatuses: [] },
         attention: { score: 0, label: "healthy", reasons: [] },
         quickLinks: { dashboardPath: "", brainPath: "", documentsPath: "", docViewerPath: null, docViewerState: null, brainViewerState: { pageContext: "brain_overview", selectedRefType: "dashboard_scope", selectedRefId: "project-1" } },
         recentActivity: { latestAcceptedChangeAt: null, latestDecisionAt: null, latestDocumentProcessedAt: null }
@@ -186,7 +189,9 @@ describe("DashboardService", () => {
               acceptedAt: new Date("2026-03-01T00:00:00.000Z"),
               createdAt: new Date("2026-03-01T00:00:00.000Z")
             }
-          ]
+          ],
+          communicationConnectors: [],
+          messageInsights: []
         })
       },
       dashboardSnapshot: {
@@ -319,7 +324,8 @@ describe("DashboardService", () => {
         watchCount: 0,
         projectsNeedingAttention: [],
         changePressure: { pendingCount: 0, recentAcceptedCount: 0, openDecisionCount: 0 },
-        brainFreshness: { current: 1, processing: 0, stale: 0, blocked: 0 }
+        brainFreshness: { current: 1, processing: 0, stale: 0, blocked: 0 },
+        communication: { connectedProviderCount: 0, needsReviewCount: 0, blockerCount: 0, contradictionCount: 0, lastSyncedAt: null }
       },
       projects: [],
       quickLinks: { projects: [] }
@@ -398,7 +404,9 @@ describe("DashboardService", () => {
             documents: [],
             changeProposals: [],
             decisions: [],
-            artifacts: []
+            artifacts: [],
+            communicationConnectors: [],
+            messageInsights: []
           },
           {
             id: "project-2",
@@ -419,7 +427,9 @@ describe("DashboardService", () => {
             documents: [],
             changeProposals: [],
             decisions: [],
-            artifacts: []
+            artifacts: [],
+            communicationConnectors: [],
+            messageInsights: []
           }
         ])
       }
@@ -495,7 +505,9 @@ describe("DashboardService", () => {
             changeProposals: [],
             decisions: [],
             // No accepted brain
-            artifacts: []
+            artifacts: [],
+            communicationConnectors: [],
+            messageInsights: []
           }
         ])
       }

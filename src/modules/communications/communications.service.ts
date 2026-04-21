@@ -57,17 +57,17 @@ export class CommunicationsService {
       ["manual_import", new ManualImportProvider()],
       ["slack", new SlackProvider(env)],
       ["gmail", new GmailProvider(env)],
-      ["outlook", new OutlookProvider()],
-      ["microsoft_teams", new TeamsProvider()],
-      ["whatsapp_business", new WhatsAppBusinessProvider()]
+      ["outlook", new OutlookProvider(env)],
+      ["microsoft_teams", new TeamsProvider(env)],
+      ["whatsapp_business", new WhatsAppBusinessProvider(env)]
     ]);
 
     this.providers = providers;
     this.normalizer = new MessageNormalizerService();
     this.ingestion = new MessageIngestionService(prisma, jobs);
     this.indexing = new MessageIndexingService(prisma, embeddingProvider, auditService, jobs);
-    this.connectors = new ConnectorsService(prisma, env, projectService, auditService, jobs, credentialVault, providers);
-    this.sync = new SyncService(prisma, env, projectService, auditService, jobs, credentialVault, providers, this.ingestion);
+    this.connectors = new ConnectorsService(prisma, env, projectService, auditService, jobs, credentialVault, providers, telemetry);
+    this.sync = new SyncService(prisma, env, projectService, auditService, jobs, credentialVault, providers, this.ingestion, telemetry);
     this.connectors.setSyncService(this.sync);
     this.timeline = new TimelineService(prisma, projectService, auditService);
     this.impactResolver = new ImpactResolverService(prisma);

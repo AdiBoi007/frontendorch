@@ -27,6 +27,7 @@ export interface ProviderSyncResult {
   summary?: Record<string, unknown>;
   deletedProviderMessageIds?: string[];
   updatedCredential?: Record<string, unknown> | null;
+  status?: "completed" | "partial";
 }
 
 export interface ProviderWebhookVerificationResult {
@@ -62,6 +63,7 @@ export interface CommunicationProviderAdapter {
     headers: Record<string, string | string[] | undefined>;
     rawBody: string;
     body: unknown;
+    query?: Record<string, string | string[] | undefined>;
     connectors: CommunicationConnector[];
   }): Promise<ProviderWebhookVerificationResult>;
   revoke?(input: {

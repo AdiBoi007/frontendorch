@@ -1,14 +1,15 @@
-# Feature 5: Communication Layer (C1 + C2 + C3)
+# Feature 5: Communication Layer (C1 + C2 + C3 + C4)
 
 ## Purpose
 
 Feature 5 turns external project communication into immutable, provider-agnostic project evidence, then layers conservative AI interpretation and manager-reviewed truth updates on top of that evidence.
 
-The feature is implemented in three completed builds:
+## Completed builds
 
 - `C1`: connector and ingestion foundation
 - `C2`: insight classification, impact resolution, review queue, and communication-driven proposal generation
 - `C3`: production-safe credential vault, Slack OAuth/sync/webhooks, and Gmail OAuth/polling sync
+- `C4`: Outlook + Microsoft Teams connectors, WhatsApp Business inbound/webhook support, sync locking, retry/backoff, observability, and dashboard communication summary integration
 
 ## What the current implementation covers
 
@@ -21,6 +22,11 @@ The feature is implemented in three completed builds:
 - Slack history + replies sync
 - Gmail OAuth callback handling
 - Gmail polling/incremental sync
+- Outlook OAuth callback handling through Microsoft identity
+- Outlook message sync through Microsoft Graph
+- Microsoft Teams OAuth callback handling through Microsoft identity
+- Microsoft Teams channel + reply sync through Microsoft Graph
+- WhatsApp Business webhook challenge/signature verification and inbound normalization
 - immutable normalized messages plus revision history for edits
 - attachment metadata capture
 - provider-aware message chunking and embeddings
@@ -33,15 +39,19 @@ The feature is implemented in three completed builds:
 - dedupe / supersession handling
 - manager review routes
 - preservation of provenance into Product Brain, Viewer, Socrates, and Dashboard
+- provider sync runtime locking
+- provider rate-limit retry/backoff handling
+- dashboard communication summary contribution
 
 ## What it does not do yet
 
-- Outlook / Teams / WhatsApp live connectors
 - Gmail push/watch webhook ingestion
+- Outlook/Teams subscription lifecycle automation beyond provider-ready callback/webhook handling
 - outbound messaging
 - CRM/helpdesk workflows
 - automatic acceptance of truth changes
 - client-visible communication intelligence
+- WhatsApp outbound send/reply
 
 ## Core invariants
 
@@ -53,6 +63,7 @@ The feature is implemented in three completed builds:
 - accepted communication-derived truth changes still flow through the existing `apply_accepted_change` path
 - raw OAuth tokens never live in Prisma rows
 - clients are blocked from internal communication, insights, and review queues
+- provider sync is connector-locked and retry-safe
 
 ## Main schema objects
 
@@ -86,7 +97,12 @@ Connector/OAuth/webhook:
 - `POST /v1/projects/:projectId/connectors/:provider/connect`
 - `GET /v1/oauth/slack/callback`
 - `GET /v1/oauth/google/callback`
+- `GET /v1/oauth/microsoft/callback`
 - `POST /v1/webhooks/slack`
+- `POST /v1/webhooks/outlook`
+- `POST /v1/webhooks/teams`
+- `GET /v1/webhooks/whatsapp-business`
+- `POST /v1/webhooks/whatsapp-business`
 - `POST /v1/projects/:projectId/connectors/:connectorId/sync`
 - `POST /v1/projects/:projectId/connectors/:connectorId/revoke`
 - `GET /v1/projects/:projectId/connectors/:connectorId/sync-runs`
@@ -109,7 +125,7 @@ Intelligence/review:
 - `POST /v1/projects/:projectId/threads/:threadId/classify`
 - `GET /v1/projects/:projectId/communication-review`
 
-## High-level flow
+## High-level flows
 
 ### C1 ingestion flow
 
@@ -132,7 +148,7 @@ Intelligence/review:
 6. Dedupe/supersession prevents proposal spam.
 7. Managers still accept/reject through the existing change workflow.
 
-### C3 provider connect flow
+### C3 Slack/Gmail provider flow
 
 1. A manager starts Slack or Gmail connect.
 2. Orchestra creates a short-lived, one-time OAuth state row.
@@ -141,24 +157,24 @@ Intelligence/review:
 5. The connector is moved to `connected`.
 6. An initial `backfill` sync is enqueued.
 
-### C3 provider sync flow
+### C4 Microsoft provider flow
 
-1. `sync_communication_connector` loads the connector and blocks revoked connectors.
-2. Credentials are loaded from `CredentialVault`.
-3. The provider adapter returns normalized batches plus cursor updates.
-4. `MessageIngestionService` upserts threads/messages idempotently.
-5. Indexing jobs run and message classification continues through C2.
-6. Connector cursors advance only after ingestion is persisted.
-7. Dashboard refresh is enqueued.
+1. A manager starts `outlook` or `microsoft_teams` connect.
+2. Orchestra creates signed one-time OAuth state and redirects to Microsoft identity.
+3. `/v1/oauth/microsoft/callback` verifies state and dispatches to the correct provider from the state payload.
+4. Credentials are stored only through `CredentialVault`.
+5. A connector is created or updated and initial backfill sync is enqueued.
+6. Outlook sync normalizes email threads/messages and metadata-only attachments.
+7. Teams sync normalizes channel roots and replies into shared thread/message models.
 
-### C3 Slack webhook flow
+### C4 WhatsApp inbound flow
 
-1. Slack sends an Events API request.
-2. Orchestra verifies the signature and timestamp using the raw request body.
-3. `url_verification` returns immediately.
-4. Event callbacks are deduped using `provider_webhook_events`.
-5. Matching Slack connectors enqueue webhook sync jobs.
-6. Message edits still create revisions, and deletes mark `isDeletedByProvider` without deleting history.
+1. A manager creates or reuses a `whatsapp_business` connector.
+2. Meta verifies the webhook challenge through `GET /v1/webhooks/whatsapp-business`.
+3. Inbound POST payloads are signature-verified when `WHATSAPP_APP_SECRET` is configured.
+4. Status-only events are ignored as user-message evidence.
+5. Inbound text/media metadata normalizes into shared thread/message rows.
+6. Existing indexing/classification/proposal flows continue on top of the normalized evidence.
 
 ## Authorization
 
@@ -195,6 +211,9 @@ Intelligence/review:
 - OAuth state is HMAC-signed, one-time-use, and expires quickly
 - Slack webhook verification uses signed raw-body validation
 - Gmail is currently implemented with safe polling/manual sync instead of push notifications
+- Outlook and Teams are implemented through Microsoft Graph using the shared Microsoft OAuth callback route
+- WhatsApp Business is inbound/webhook-first and can be readiness-gated with `WHATSAPP_READINESS_MODE`
+- connector sync jobs reject revoked connectors, suppress duplicate active syncs, retry provider sync on rate limits, and update dashboard communication summary after connect/import/revoke/sync flows
 
 ## Integration points
 
@@ -209,6 +228,7 @@ Intelligence/review:
   - linked document open-targets remain valid
 - Feature 4:
   - connector/import/proposal creation and proposal acceptance refresh dashboard snapshots
+  - dashboard snapshots now include communication provider counts, sync freshness, blockers, contradictions, and review pressure
 
 ## File map
 
@@ -226,8 +246,13 @@ Intelligence/review:
 - `src/modules/communications/insight-classifier.prompt.ts`
 - `src/modules/communications/providers/slack.provider.ts`
 - `src/modules/communications/providers/gmail.provider.ts`
+- `src/modules/communications/providers/outlook.provider.ts`
+- `src/modules/communications/providers/teams.provider.ts`
+- `src/modules/communications/providers/whatsapp-business.provider.ts`
 - `src/lib/communications/credential-vault.ts`
 - `src/lib/communications/oauth-state.ts`
+- `src/lib/communications/microsoft-graph.ts`
+- `src/lib/communications/provider-http.ts`
 
 ## Testing status
 
@@ -245,12 +270,18 @@ The repo now includes coverage for:
 - Slack webhook signature verification
 - Gmail OAuth/token refresh and polling sync fixtures
 - Gmail HTML cleanup and attachment metadata extraction
+- Outlook OAuth callback and Graph sync fixtures
+- Teams Graph sync fixtures
+- WhatsApp challenge and inbound webhook fixtures
 - OAuth callback connector bootstrap and initial backfill enqueue
 - duplicate active sync reuse
+- runtime connector lock handling
+- provider rate-limit retry/backoff
 - route-level callback/webhook contracts
 
 ## Rebuild reference
 
 - `communication_layer_C1.md` documents the foundation build
 - `communication_layer_C2.md` documents the intelligence/review build
-- `communication_layer_C3.md` should be treated as the detailed baseline for future C4 connector work
+- `communication_layer_C3.md` documents Slack/Gmail production connector work
+- `communication_layer_C4.md` documents Outlook/Teams/WhatsApp and hardening work

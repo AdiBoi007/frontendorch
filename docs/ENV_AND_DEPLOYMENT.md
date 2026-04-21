@@ -208,11 +208,12 @@ Intended for:
 ## 5.8 Connector credentials / OAuth
 - Slack client id/secret + signing secret
 - Google OAuth client id/secret
+- Microsoft OAuth client id/secret + tenant + redirect URI
 - connector vault mode
 - connector OAuth state secret
 - connector sync batch size
 - connector max backfill days
-- WhatsApp Business app credentials as needed
+- WhatsApp Business webhook verify token / app secret / readiness mode
 - provider webhook verification tokens if relevant
 
 ## 5.9 Rate limiting and security
@@ -271,6 +272,15 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=http://localhost:3000/v1/oauth/google/callback
 GOOGLE_PUBSUB_TOPIC=
+
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+MICROSOFT_REDIRECT_URI=http://localhost:3000/v1/oauth/microsoft/callback
+MICROSOFT_TENANT_ID=common
+
+WHATSAPP_WEBHOOK_VERIFY_TOKEN=...
+WHATSAPP_APP_SECRET=
+WHATSAPP_READINESS_MODE=webhook_inbound
 
 CONNECTOR_CREDENTIAL_VAULT_MODE=encrypted_file
 CONNECTOR_OAUTH_STATE_SECRET=replace_with_long_random_secret
@@ -347,9 +357,20 @@ The current repo stores provider credentials only through `CredentialVault`.
   - `GOOGLE_CLIENT_ID`
   - `GOOGLE_CLIENT_SECRET`
   - `GOOGLE_REDIRECT_URI`
+- Microsoft OAuth requires:
+  - `MICROSOFT_CLIENT_ID`
+  - `MICROSOFT_CLIENT_SECRET`
+  - `MICROSOFT_REDIRECT_URI`
+  - `MICROSOFT_TENANT_ID`
+- WhatsApp Business webhook ingestion requires:
+  - `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+  - optional `WHATSAPP_APP_SECRET` for signature verification
+  - `WHATSAPP_READINESS_MODE=webhook_inbound` to enable inbound ingestion
 - OAuth callback state is one-time-use and expires quickly
 - webhook handlers must verify provider signatures/timestamps and queue heavy work
 - Gmail is currently implemented with robust polling/manual sync fallback; push/watch wiring is intentionally deferred
+- Outlook and Microsoft Teams use the shared `/v1/oauth/microsoft/callback` route and mocked/provider-ready Microsoft Graph webhook endpoints
+- connector sync uses connector-level runtime locking and retries provider rate limits with retry-after aware backoff
 ## 8.6 Signed file access
 If raw files need direct access:
 - use signed URLs

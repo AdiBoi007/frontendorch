@@ -6,9 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CredentialVault } from "../src/lib/communications/credential-vault.js";
 import { SlackProvider } from "../src/modules/communications/providers/slack.provider.js";
 import { GmailProvider } from "../src/modules/communications/providers/gmail.provider.js";
+import { OutlookProvider } from "../src/modules/communications/providers/outlook.provider.js";
+import { TeamsProvider } from "../src/modules/communications/providers/teams.provider.js";
+import { WhatsAppBusinessProvider } from "../src/modules/communications/providers/whatsapp-business.provider.js";
 import { ConnectorsService } from "../src/modules/communications/connectors.service.js";
 import { SyncService } from "../src/modules/communications/sync.service.js";
 import { MessageIngestionService } from "../src/modules/communications/message-ingestion.service.js";
+import { AppError } from "../src/app/errors.js";
 
 function createEnv(overrides: Record<string, unknown> = {}) {
   return {
@@ -44,6 +48,13 @@ function createEnv(overrides: Record<string, unknown> = {}) {
     GOOGLE_CLIENT_SECRET: "google-client-secret",
     GOOGLE_REDIRECT_URI: "http://localhost:3000/v1/oauth/google/callback",
     GOOGLE_PUBSUB_TOPIC: undefined,
+    MICROSOFT_CLIENT_ID: "microsoft-client-id",
+    MICROSOFT_CLIENT_SECRET: "microsoft-client-secret",
+    MICROSOFT_REDIRECT_URI: "http://localhost:3000/v1/oauth/microsoft/callback",
+    MICROSOFT_TENANT_ID: "common",
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: "whatsapp-verify-token",
+    WHATSAPP_APP_SECRET: "whatsapp-app-secret",
+    WHATSAPP_READINESS_MODE: "webhook_inbound",
     CONNECTOR_CREDENTIAL_VAULT_MODE: "memory",
     CONNECTOR_OAUTH_STATE_SECRET: "test-connector-oauth-state-secret",
     CONNECTOR_SYNC_BATCH_SIZE: 100,
@@ -333,6 +344,303 @@ describe("communication layer C3 providers", () => {
     );
   });
 
+  it("builds Microsoft OAuth URLs and exchanges Outlook callbacks into credentials", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("oauth2/v2.0/token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "outlook-access",
+            refresh_token: "outlook-refresh",
+            expires_in: 3600,
+            scope: "Mail.Read offline_access"
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/me?")) {
+        return new Response(
+          JSON.stringify({
+            id: "graph-user-1",
+            displayName: "Client Inbox",
+            userPrincipalName: "client@example.com"
+          }),
+          { status: 200 }
+        );
+      }
+      throw new Error(`Unexpected Outlook URL: ${url}`);
+    });
+
+    const provider = new OutlookProvider(createEnv(), fetchMock as typeof fetch);
+    const connect = await provider.connect({ oauthState: "signed-state" });
+    expect(connect.redirectUrl).toContain("state=signed-state");
+
+    const callback = await provider.handleOAuthCallback({
+      code: "test-code"
+    });
+
+    expect(callback.accountLabel).toBe("client@example.com");
+    expect(callback.credential).toEqual(
+      expect.objectContaining({
+        accessToken: "outlook-access",
+        refreshToken: "outlook-refresh"
+      })
+    );
+  });
+
+  it("syncs Outlook messages and preserves attachment metadata", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("oauth2/v2.0/token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "outlook-access-refreshed",
+            expires_in: 3600,
+            refresh_token: "outlook-refresh",
+            scope: "Mail.Read offline_access"
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/mailFolders/Inbox/messages?")) {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: "graph-message-1",
+                conversationId: "conversation-1",
+                subject: "Reporting cadence",
+                body: { contentType: "html", content: "<div>Please send weekly reporting.</div>" },
+                bodyPreview: "Please send weekly reporting.",
+                from: { emailAddress: { name: "Client", address: "client@example.com" } },
+                toRecipients: [{ emailAddress: { name: "PM", address: "pm@example.com" } }],
+                createdDateTime: "2026-04-20T10:00:00.000Z",
+                lastModifiedDateTime: "2026-04-20T10:00:00.000Z",
+                webLink: "https://outlook.office.com/mail/inbox/id/graph-message-1",
+                attachments: [
+                  {
+                    id: "attachment-1",
+                    name: "brief.pdf",
+                    contentType: "application/pdf",
+                    size: 128
+                  }
+                ]
+              }
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      throw new Error(`Unexpected Outlook sync URL: ${url}`);
+    });
+
+    const provider = new OutlookProvider(createEnv(), fetchMock as typeof fetch);
+    const result = await provider.sync({
+      projectId: "project-1",
+      connector: {
+        id: "connector-1",
+        projectId: "project-1",
+        provider: "outlook",
+        accountLabel: "Outlook",
+        status: "connected",
+        configJson: { folderIds: ["Inbox"], includeAttachmentsMetadata: true, backfillDays: 30 },
+        providerCursorJson: {}
+      } as any,
+      credential: {
+        accessToken: "outlook-access",
+        refreshToken: "outlook-refresh",
+        expiryDate: Date.now() - 1_000,
+        accountId: "graph-user-1",
+        accountLabel: "Client Inbox"
+      },
+      syncType: "backfill",
+      batchSize: 50,
+      maxBackfillDays: 30
+    });
+
+    expect(result.batches?.[0]?.threads[0]?.providerThreadId).toBe("conversation-1");
+    expect(result.batches?.[0]?.messages[0]?.providerMessageId).toBe("graph-message-1");
+    expect(result.batches?.[0]?.messages[0]?.bodyText).toContain("weekly reporting");
+    expect(result.batches?.[0]?.messages[0]?.attachments?.[0]).toEqual(
+      expect.objectContaining({
+        providerAttachmentId: "attachment-1",
+        filename: "brief.pdf"
+      })
+    );
+    expect(result.cursorAfter).toEqual(
+      expect.objectContaining({
+        deltaLink: expect.stringContaining("/me/messages/delta")
+      })
+    );
+    expect(result.updatedCredential).toEqual(
+      expect.objectContaining({
+        accessToken: "outlook-access-refreshed"
+      })
+    );
+  });
+
+  it("syncs Teams channel roots and replies into normalized messages", async () => {
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("oauth2/v2.0/token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "teams-access-refreshed",
+            expires_in: 3600,
+            refresh_token: "teams-refresh"
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/teams/team-1/channels/channel-1/messages?")) {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: "root-1",
+                createdDateTime: "2026-04-20T10:00:00.000Z",
+                body: { contentType: "html", content: "<div>Need weekly reporting</div>" },
+                from: { user: { id: "user-1", displayName: "Client" } }
+              }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/teams/team-1/channels/channel-1/messages/root-1/replies")) {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: "reply-1",
+                replyToId: "root-1",
+                createdDateTime: "2026-04-20T10:05:00.000Z",
+                body: { contentType: "html", content: "<div>Approved by client</div>" },
+                from: { user: { id: "user-2", displayName: "PM" } }
+              }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+      throw new Error(`Unexpected Teams URL: ${url}`);
+    });
+
+    const provider = new TeamsProvider(createEnv(), fetchMock as typeof fetch);
+    const result = await provider.sync({
+      projectId: "project-1",
+      connector: {
+        id: "connector-1",
+        projectId: "project-1",
+        provider: "microsoft_teams",
+        accountLabel: "Teams",
+        status: "connected",
+        configJson: {
+          teams: [{ teamId: "team-1", channelIds: ["channel-1"] }],
+          includeBotMessages: false,
+          backfillDays: 30
+        },
+        providerCursorJson: {}
+      } as any,
+      credential: {
+        accessToken: "teams-access",
+        refreshToken: "teams-refresh",
+        expiryDate: Date.now() - 1_000,
+        accountId: "graph-user-1",
+        accountLabel: "Teams Account"
+      },
+      syncType: "backfill",
+      batchSize: 50,
+      maxBackfillDays: 30
+    });
+
+    expect(result.batches?.[0]?.threads[0]?.providerThreadId).toBe("team-1:channel-1:root-1");
+    expect(result.batches?.[0]?.messages).toHaveLength(2);
+    expect(result.batches?.[0]?.messages[1]?.providerMessageId).toBe("team-1:channel-1:reply-1");
+    expect(result.updatedCredential).toEqual(
+      expect.objectContaining({
+        accessToken: "teams-access-refreshed"
+      })
+    );
+  });
+
+  it("verifies WhatsApp challenge requests and normalizes inbound messages", async () => {
+    const provider = new WhatsAppBusinessProvider(createEnv());
+
+    const verification = await provider.verifyWebhook({
+      headers: {},
+      rawBody: "",
+      body: {},
+      query: {
+        "hub.mode": "subscribe",
+        "hub.verify_token": "whatsapp-verify-token",
+        "hub.challenge": "challenge-value"
+      },
+      connectors: []
+    });
+    expect(verification.handledImmediately).toEqual({
+      statusCode: 200,
+      body: "challenge-value"
+    });
+
+    const inboundBody = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata: { phone_number_id: "phone-1" },
+                contacts: [{ wa_id: "61400000000", profile: { name: "Client" } }],
+                messages: [
+                  {
+                    id: "wamid-1",
+                    from: "61400000000",
+                    timestamp: "1713600000",
+                    type: "text",
+                    text: { body: "Can we add weekly reporting?" }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    };
+    const rawBody = JSON.stringify(inboundBody);
+    const signature = `sha256=${createHmac("sha256", "whatsapp-app-secret").update(rawBody).digest("hex")}`;
+
+    const verified = await provider.verifyWebhook({
+      headers: { "x-hub-signature-256": signature },
+      rawBody,
+      body: inboundBody,
+      connectors: [
+        {
+          id: "connector-1",
+          configJson: { phoneNumberIds: ["phone-1"] }
+        } as any
+      ],
+      query: {}
+    });
+    expect(verified.connectorIds).toEqual(["connector-1"]);
+
+    const result = await provider.sync({
+      projectId: "project-1",
+      connector: {
+        id: "connector-1",
+        projectId: "project-1",
+        provider: "whatsapp_business",
+        accountLabel: "WhatsApp",
+        status: "connected",
+        configJson: { phoneNumberIds: ["phone-1"] }
+      } as any,
+      syncType: "webhook",
+      webhookPayload: { change: inboundBody.entry[0].changes[0] }
+    });
+
+    expect(result.batches?.[0]?.messages[0]?.providerMessageId).toBe("wamid-1");
+    expect(result.batches?.[0]?.threads[0]?.providerThreadId).toBe("phone-1:61400000000");
+  });
+
   it("stores OAuth callback credentials on the connector and queues initial backfill", async () => {
     const env = createEnv();
     const vault = new CredentialVault(env);
@@ -378,7 +686,8 @@ describe("communication layer C3 providers", () => {
       { record: vi.fn(async () => undefined) } as any,
       { enqueue: vi.fn(async () => undefined) } as any,
       vault,
-      new Map([["slack", adapter as any]])
+      new Map([["slack", adapter as any]]),
+      { increment: vi.fn(), observeDuration: vi.fn(), setGauge: vi.fn(), renderPrometheus: vi.fn(() => "") } as any
     );
     service.setSyncService(syncService);
 
@@ -441,8 +750,9 @@ describe("communication layer C3 providers", () => {
       { record: vi.fn(async () => undefined) } as any,
       { enqueue: vi.fn(async () => undefined) } as any,
       new CredentialVault(createEnv()),
-      new Map(),
-      {} as MessageIngestionService
+      new Map([["slack", { provider: "slack", sync: vi.fn() } as any]]),
+      {} as MessageIngestionService,
+      { increment: vi.fn(), observeDuration: vi.fn(), setGauge: vi.fn(), renderPrometheus: vi.fn(() => "") } as any
     );
 
     const reused = await sync.queueSync("project-1", "connector-1", "user-1", "manual");
@@ -450,5 +760,138 @@ describe("communication layer C3 providers", () => {
 
     const fresh = await sync.queueSync("project-1", "connector-1", "user-1", "manual");
     expect(fresh).toEqual({ connectorId: "connector-1", syncRunId: "sync-new", queued: true });
+  });
+
+  it("returns connector locked partial summaries when another sync run is already active", async () => {
+    const prisma = {
+      communicationConnector: {
+        findFirstOrThrow: vi.fn(async () => ({
+          id: "connector-1",
+          projectId: "project-1",
+          provider: "slack",
+          status: "connected",
+          credentialsRef: "vault:slack:connector-1",
+          providerCursorJson: {}
+        })),
+        update: vi.fn(async () => undefined)
+      },
+      communicationSyncRun: {
+        findFirst: vi.fn(async () => ({ id: "sync-running" })),
+        update: vi.fn(async () => undefined)
+      },
+      jobRun: {
+        upsert: vi.fn(async () => undefined),
+        update: vi.fn(async () => undefined)
+      }
+    } as any;
+
+    const sync = new SyncService(
+      prisma,
+      createEnv(),
+      {} as any,
+      { record: vi.fn(async () => undefined) } as any,
+      { enqueue: vi.fn(async () => undefined) } as any,
+      new CredentialVault(createEnv()),
+      new Map([["slack", { provider: "slack", sync: vi.fn() } as any]]),
+      {} as MessageIngestionService,
+      { increment: vi.fn(), observeDuration: vi.fn(), setGauge: vi.fn(), renderPrometheus: vi.fn(() => "") } as any
+    );
+
+    const result = await sync.runSyncJob({
+      connectorId: "connector-1",
+      projectId: "project-1",
+      syncType: "manual",
+      syncRunId: "sync-new",
+      idempotencyKey: "sync:connector-1"
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        skipped: true,
+        reason: "connector_locked",
+        competingSyncRunId: "sync-running"
+      })
+    );
+  });
+
+  it("retries provider sync on rate limits before succeeding", async () => {
+    const env = createEnv();
+    const telemetry = { increment: vi.fn(), observeDuration: vi.fn(), setGauge: vi.fn(), renderPrometheus: vi.fn(() => "") } as any;
+    const vault = new CredentialVault(env);
+    await vault.putCredential({
+      provider: "slack",
+      connectorId: "connector-1",
+      credential: { accessToken: "xoxb-test" }
+    });
+
+    const adapter = {
+      provider: "slack",
+      sync: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new AppError(429, "Rate limited", "communication_provider_rate_limited", { retryAfterMs: 1 })
+        )
+        .mockResolvedValueOnce({
+          queued: false,
+          batches: [],
+          summary: {}
+        })
+    };
+
+    const prisma = {
+      communicationConnector: {
+        findFirstOrThrow: vi.fn(async () => ({
+          id: "connector-1",
+          projectId: "project-1",
+          provider: "slack",
+          status: "connected",
+          credentialsRef: "vault:slack:connector-1",
+          providerCursorJson: {}
+        })),
+        update: vi.fn(async () => undefined)
+      },
+      communicationSyncRun: {
+        findFirst: vi.fn(async () => null),
+        update: vi.fn(async () => undefined)
+      },
+      project: {
+        findUniqueOrThrow: vi.fn(async () => ({ orgId: "org-1" }))
+      },
+      jobRun: {
+        upsert: vi.fn(async () => undefined),
+        update: vi.fn(async () => undefined)
+      }
+    } as any;
+
+    const sync = new SyncService(
+      prisma,
+      env,
+      {} as any,
+      { record: vi.fn(async () => undefined) } as any,
+      { enqueue: vi.fn(async () => undefined) } as any,
+      vault,
+      new Map([["slack", adapter as any]]),
+      {
+        ingestNormalizedBatch: vi.fn(async () => ({
+          createdMessageCount: 0,
+          updatedRevisionCount: 0,
+          indexedMessageCount: 0
+        }))
+      } as any,
+      telemetry
+    );
+
+    await sync.runSyncJob({
+      connectorId: "connector-1",
+      projectId: "project-1",
+      syncType: "incremental",
+      syncRunId: "sync-1",
+      idempotencyKey: "sync:connector-1"
+    });
+
+    expect(adapter.sync).toHaveBeenCalledTimes(2);
+    expect(telemetry.increment).toHaveBeenCalledWith("communication_provider_rate_limited_total", {
+      provider: "slack"
+    });
   });
 });

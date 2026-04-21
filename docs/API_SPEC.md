@@ -566,7 +566,7 @@ Compare two Product Brain versions.
 
 ## 8. Communication routes
 
-The current communication layer is Build C1 + C2 + C3:
+The current communication layer is Build C1 + C2 + C3 + C4:
 - provider-agnostic schema hardening
 - manual import
 - connector read models
@@ -578,6 +578,10 @@ The current communication layer is Build C1 + C2 + C3:
 - production-safe credential vaulting
 - Slack OAuth + sync + verified webhook ingestion
 - Gmail OAuth + polling/incremental sync ingestion
+- Outlook OAuth + Microsoft Graph sync ingestion
+- Microsoft Teams OAuth + Microsoft Graph channel/reply sync ingestion
+- WhatsApp Business inbound/webhook ingestion
+- provider sync locking, retry/backoff, and communication-summary dashboard integration
 
 ### Authorization rules
 - manager-only:
@@ -654,16 +658,14 @@ Manager-only provider connect/init route.
 - `manual_import` → creates or reuses a connected manual connector
 - `slack` → starts OAuth and returns a Slack OAuth URL
 - `gmail` → starts OAuth and returns a Google OAuth URL
-
-### Present but not implemented yet
-- `outlook`
-- `microsoft_teams`
-- `whatsapp_business`
+- `outlook` → starts Microsoft OAuth and returns a Microsoft OAuth URL
+- `microsoft_teams` → starts Microsoft OAuth and returns a Microsoft OAuth URL
+- `whatsapp_business` → readiness-gated inbound webhook setup flow
 
 ### Behavior
 - `manual_import` returns a connected connector immediately
-- `slack` and `gmail` return `pending_auth` plus a provider OAuth URL
-- other providers return a clean not-implemented error from provider stubs
+- `slack`, `gmail`, `outlook`, and `microsoft_teams` return `pending_auth` plus a provider OAuth URL
+- `whatsapp_business` returns a readiness-gated connector record intended for webhook-first ingestion
 
 ---
 
@@ -703,6 +705,59 @@ Unauthenticated Slack Events API webhook.
 
 ---
 
+## 8.4D GET /v1/oauth/microsoft/callback
+Unauthenticated Microsoft OAuth callback shared by Outlook and Microsoft Teams.
+
+### Behavior
+- verifies and consumes one-time OAuth state
+- routes callback handling from the signed state payload to either `outlook` or `microsoft_teams`
+- stores credentials through `CredentialVault`
+- creates or updates the connector
+- enqueues initial `backfill` sync
+
+---
+
+## 8.4E POST /v1/webhooks/outlook
+Unauthenticated Microsoft Graph notification endpoint for Outlook.
+
+### Behavior
+- returns `validationToken` immediately when Microsoft validates the subscription
+- dedupes notifications through `provider_webhook_events`
+- enqueues connector incremental sync
+
+---
+
+## 8.4F POST /v1/webhooks/teams
+Unauthenticated Microsoft Graph notification endpoint for Microsoft Teams.
+
+### Behavior
+- returns `validationToken` immediately when Microsoft validates the subscription
+- dedupes notifications through `provider_webhook_events`
+- enqueues connector incremental sync
+
+---
+
+## 8.4G GET /v1/webhooks/whatsapp-business
+WhatsApp Business verification challenge endpoint.
+
+### Behavior
+- validates `hub.verify_token`
+- returns `hub.challenge`
+
+---
+
+## 8.4H POST /v1/webhooks/whatsapp-business
+WhatsApp Business inbound webhook endpoint.
+
+### Behavior
+- verifies signature when `WHATSAPP_APP_SECRET` is configured
+- dedupes inbound events
+- normalizes inbound messages into provider-agnostic thread/message batches
+- ignores status-only events as user-message evidence
+- enqueues indexing/classification through the standard communication ingestion flow
+
+---
+
 ## 8.5 POST /v1/projects/:projectId/connectors/:connectorId/sync
 Manager-only sync trigger.
 
@@ -734,6 +789,17 @@ Manager-only sync trigger.
   - OAuth-based connect
   - manual/incremental polling sync
   - watch/webhook delivery is intentionally deferred in the current repo
+- `outlook` supports:
+  - OAuth-based connect
+  - manual/incremental Microsoft Graph sync
+  - provider-ready webhook callback handling
+- `microsoft_teams` supports:
+  - OAuth-based connect
+  - manual/incremental Microsoft Graph sync for configured teams/channels
+  - provider-ready webhook callback handling
+- `whatsapp_business` supports:
+  - readiness-gated inbound webhook ingestion
+  - safe no-op manual sync summary because it is webhook-first
 - repeated syncs are idempotent at the evidence layer and must not duplicate messages
 
 ---
