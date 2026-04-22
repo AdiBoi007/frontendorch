@@ -20,7 +20,7 @@ import type {
 } from "./types";
 
 export const mockProjects: ProjectCardItem[] = [
-  { id: "1", name: "BloomFast MVP", progress: 34, health: "HEALTHY", color: "#c8f0e8" },
+  { id: "1", name: "BloomFast MVP", progress: 34, health: "HEALTHY", color: "#e5e7eb" },
   { id: "2", name: "Elara Games", progress: 38, health: "AT RISK", color: "#e0dbf5" },
   { id: "3", name: "API Gateway", progress: 79, health: "CRITICAL", color: "#fceee4" }
 ];
@@ -782,11 +782,11 @@ function createProjectBrainData({
         x: 50,
         y: 50,
         size: 80,
-        background: "linear-gradient(135deg, #00b4a0, #0a8a80)",
+        background: "linear-gradient(135deg, #111827, #374151)",
         borderColor: "#ffffff",
         textColor: "#ffffff",
-        accentColor: "#00b4a0",
-        shadow: "0 0 40px rgba(0,180,160,0.4), 0 8px 32px rgba(0,0,0,0.12)",
+        accentColor: "#111827",
+        shadow: "0 0 40px rgba(17,24,39,0.4), 0 8px 32px rgba(0,0,0,0.12)",
         tooltip: `${projectName} brain core`,
         countLabel: "5 active domains"
       },
@@ -796,7 +796,7 @@ function createProjectBrainData({
         x: 50,
         y: 22,
         icon: "file-text",
-        accentColor: "#00b4a0",
+        accentColor: "#111827",
         tooltip: `${projectName} docs`,
         countLabel: `${docsItems.length} linked docs`,
         detailItems: docsItems
@@ -840,7 +840,7 @@ function createProjectBrainData({
         x: 28,
         y: 36,
         icon: "check-square",
-        accentColor: "#00b4a0",
+        accentColor: "#111827",
         tooltip: `${projectName} decisions`,
         countLabel: `${decisionItems.length} locked calls`,
         detailItems: decisionItems
@@ -852,9 +852,9 @@ function createProjectBrainData({
         label: docs[0].label,
         x: 48,
         y: 8,
-        background: "#c8f0e8",
-        borderColor: "#c8f0e8",
-        accentColor: "#00b4a0",
+        background: "#e5e7eb",
+        borderColor: "#e5e7eb",
+        accentColor: "#111827",
         tooltip: docs[0].label,
         countLabel: "1 doc node"
       }),
@@ -865,9 +865,9 @@ function createProjectBrainData({
         label: docs[1].label,
         x: 54,
         y: 8,
-        background: "#c8f0e8",
-        borderColor: "#c8f0e8",
-        accentColor: "#00b4a0",
+        background: "#e5e7eb",
+        borderColor: "#e5e7eb",
+        accentColor: "#111827",
         tooltip: docs[1].label,
         countLabel: "1 doc node"
       }),
@@ -878,9 +878,9 @@ function createProjectBrainData({
         label: docs[2].label,
         x: 42,
         y: 12,
-        background: "#c8f0e8",
-        borderColor: "#c8f0e8",
-        accentColor: "#00b4a0",
+        background: "#e5e7eb",
+        borderColor: "#e5e7eb",
+        accentColor: "#111827",
         tooltip: docs[2].label,
         countLabel: "1 doc node"
       }),
@@ -995,9 +995,9 @@ function createProjectBrainData({
         label: decisions[0].label,
         x: 16,
         y: 28,
-        background: "#c8f0e8",
-        borderColor: "#c8f0e8",
-        accentColor: "#00b4a0",
+        background: "#e5e7eb",
+        borderColor: "#e5e7eb",
+        accentColor: "#111827",
         tooltip: decisions[0].label,
         countLabel: "1 decision node"
       }),
@@ -1008,9 +1008,9 @@ function createProjectBrainData({
         label: decisions[1].label,
         x: 22,
         y: 22,
-        background: "#c8f0e8",
-        borderColor: "#c8f0e8",
-        accentColor: "#00b4a0",
+        background: "#e5e7eb",
+        borderColor: "#e5e7eb",
+        accentColor: "#111827",
         tooltip: decisions[1].label,
         countLabel: "1 decision node"
       })

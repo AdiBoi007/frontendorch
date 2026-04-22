@@ -32,8 +32,8 @@ const uploadOptions: Array<{ id: Doc["type"]; label: string }> = [
 ];
 
 const typeVisuals: Record<Doc["type"], TypeVisual> = {
-  prd: { bg: "#f0faf8", iconColor: "#00b4a0" },
-  srs: { bg: "#f0faf8", iconColor: "#00b4a0" },
+  prd: { bg: "#f4f4f5", iconColor: "#111827" },
+  srs: { bg: "#f4f4f5", iconColor: "#111827" },
   spec: { bg: "#f4f2fc", iconColor: "#8b7fd4" },
   transcript: { bg: "#fef6ec", iconColor: "#f59340" },
   audio: { bg: "#fef6ec", iconColor: "#f59340" },
@@ -281,7 +281,7 @@ export function ProjectMemoryPage() {
                               ) : (
                                 <span
                                   className="ml-auto h-1.5 w-1.5 rounded-full"
-                                  style={{ background: doc.status === "ready" ? "#00b4a0" : "#e05555" }}
+                                  style={{ background: doc.status === "ready" ? "#111827" : "#e05555" }}
                                 />
                               )}
                             </div>
@@ -327,7 +327,7 @@ export function ProjectMemoryPage() {
       <motion.button
         type="button"
         onClick={() => setIsUploadOpen(true)}
-      whileHover={{ scale: 1.04, backgroundColor: "#00b4a0" }}
+      whileHover={{ scale: 1.04, backgroundColor: "#111827" }}
       whileTap={{ scale: 0.98 }}
       className="fixed bottom-8 z-20 inline-flex items-center gap-2 rounded-full bg-[#0a0a0a] px-6 py-[14px] font-bebas text-[14px] tracking-[0.08em] text-white shadow-[0_8px_32px_rgba(0,0,0,0.2)]"
       style={{ right: "340px" }}
@@ -367,8 +367,8 @@ export function ProjectMemoryPage() {
                 onClick={() => inputRef.current?.click()}
                 className="cursor-pointer rounded-2xl border-2 border-dashed bg-[#fafaf8] px-6 py-8 text-center transition-colors"
                 style={{
-                  borderColor: isDropActive ? "#00b4a0" : "#e5e5e0",
-                  background: isDropActive ? "rgba(0,180,160,0.04)" : "#fafaf8"
+                  borderColor: isDropActive ? "#111827" : "#e5e5e0",
+                  background: isDropActive ? "rgba(17,24,39,0.04)" : "#fafaf8"
                 }}
               >
                 <div className="flex justify-center text-[#cccccc]">
@@ -383,7 +383,7 @@ export function ProjectMemoryPage() {
                 ) : (
                   <>
                     <p className="mt-2 font-syne text-[14px] text-[#888888]">Drop files here</p>
-                    <p className="mt-1 font-syne text-[12px] text-[#00b4a0] underline">or click to browse</p>
+                    <p className="mt-1 font-syne text-[12px] text-[#111827] underline">or click to browse</p>
                     <p className="mt-2 font-mono text-[11px] text-[#bbbbbb]">PDF · DOCX · TXT · MP3 · MP4 · PNG · JPG</p>
                   </>
                 )}
@@ -411,8 +411,8 @@ export function ProjectMemoryPage() {
                         className={[
                           "rounded-xl border px-3 py-3 text-center font-bebas text-[11px] tracking-[0.1em] transition-colors",
                           active
-                            ? "border-[#00b4a0] bg-[rgba(0,180,160,0.06)] text-[#0a0a0a]"
-                            : "border-[#e5e5e0] bg-white text-[#666666] hover:border-[#00b4a0]"
+                            ? "border-[#111827] bg-[rgba(17,24,39,0.06)] text-[#0a0a0a]"
+                            : "border-[#e5e5e0] bg-white text-[#666666] hover:border-[#111827]"
                         ].join(" ")}
                       >
                         {option.label}
@@ -430,7 +430,7 @@ export function ProjectMemoryPage() {
                   type="button"
                   disabled={!selectedFile || !selectedUploadType || isUploading}
                   onClick={() => void handleUpload()}
-                  className="rounded-xl bg-[#0a0a0a] px-5 py-2.5 font-bebas text-[13px] tracking-[0.08em] text-white transition-colors hover:bg-[#00b4a0] disabled:cursor-not-allowed disabled:bg-[#cfcfcb]"
+                  className="rounded-xl bg-[#0a0a0a] px-5 py-2.5 font-bebas text-[13px] tracking-[0.08em] text-white transition-colors hover:bg-[#111827] disabled:cursor-not-allowed disabled:bg-[#cfcfcb]"
                 >
                   UPLOAD
                 </button>

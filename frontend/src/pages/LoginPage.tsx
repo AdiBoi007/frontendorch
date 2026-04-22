@@ -70,30 +70,31 @@ export function LoginPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={cardTransition}
-        className="solid-card w-full max-w-[480px] p-12"
+        className="solid-card w-full max-w-[440px] p-10 md:p-12"
       >
         <div className="text-center">
-          <h1 className="font-bebas text-[56px] leading-none text-[#0a0a0a]">ORCHESTRA</h1>
-          <p className="mt-2 font-syne text-[14px] text-[#888888]">Your product brain.</p>
+          <p className="font-sans text-label font-semibold uppercase text-text2">Orchestra</p>
+          <h1 className="mt-3 font-sans text-[28px] font-bold leading-tight tracking-tight text-text1">Sign in</h1>
+          <p className="mt-2 font-sans text-docSm text-text2">Your product brain.</p>
         </div>
 
-        <div className="mt-12">
-          <p className="mb-4 font-bebas text-[11px] tracking-[3px] text-[#999999]">CONTINUE AS</p>
+        <div className="mt-10">
+          <p className="mb-3 font-sans text-label font-semibold uppercase text-text2">Continue as</p>
 
-          <motion.div initial="hidden" animate="visible" variants={listVariants} className="space-y-2.5">
+          <motion.div initial="hidden" animate="visible" variants={listVariants} className="space-y-2">
             {roleOptions.map((role) => (
               <motion.button
                 key={role.key}
                 type="button"
                 variants={itemVariants}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={{ scale: 1.005 }}
+                whileTap={{ scale: 0.995 }}
                 onClick={() => handleRoleSelect(role.key)}
-                className="group flex h-[56px] w-full items-center justify-between rounded-2xl border border-[#e5e5e0] bg-white px-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-colors duration-200 hover:border-teal"
+                className="group flex h-[52px] w-full items-center justify-between rounded-lg border border-border bg-white px-4 transition-colors duration-200 hover:border-text1"
               >
-                <span className="flex w-8 items-center justify-start text-teal">{iconByRole[role.icon]}</span>
-                <span className="font-bebas text-[18px] tracking-[0.06em] text-[#0a0a0a]">{role.label}</span>
-                <span className="flex w-8 justify-end text-[#cccccc] transition-colors duration-200 group-hover:text-teal">
+                <span className="flex w-8 items-center justify-start text-text2 group-hover:text-text1">{iconByRole[role.icon]}</span>
+                <span className="font-sans text-[15px] font-semibold text-text1">{role.label}</span>
+                <span className="flex w-8 justify-end text-text3 transition-colors duration-200 group-hover:text-text1">
                   <ArrowRightIcon className="h-[18px] w-[18px]" />
                 </span>
               </motion.button>

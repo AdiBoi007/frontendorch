@@ -34,7 +34,7 @@ const ringCircumference = 169.6;
 
 function getDeadlineColor(status: DeadlineItem["status"]) {
   if (status === "on-track") {
-    return "#00b4a0";
+    return "#111827";
   }
 
   if (status === "at-risk") {
@@ -46,7 +46,7 @@ function getDeadlineColor(status: DeadlineItem["status"]) {
 
 function getTypePillClasses(type: MeetingItem["type"]) {
   if (type === "standup") {
-    return "text-[#00b4a0] border-[#00b4a0]";
+    return "text-[#111827] border-[#111827]";
   }
 
   if (type === "review") {
@@ -68,7 +68,7 @@ function ScheduleColumnHeader({ label }: { label: string }) {
   return (
     <div className="mb-6">
       <p className="font-bebas text-[13px] tracking-[0.16em] text-[#0a0a0a]">{label}</p>
-      <span className="mt-2 block h-0.5 w-5 bg-[#00b4a0]" />
+      <span className="mt-2 block h-0.5 w-5 bg-[#111827]" />
     </div>
   );
 }
@@ -209,7 +209,7 @@ export function CalendarCard({ eventsByDate }: CalendarCardProps) {
                   onClick={() => setSelectedDate(cell.dateKey)}
                   className={[
                     "relative flex h-[38px] items-center justify-center rounded-xl transition-colors",
-                    isSelected ? "bg-[#00b4a0] text-white" : "",
+                    isSelected ? "bg-[#111827] text-white" : "",
                     !isSelected && isToday ? "bg-[#0a0a0a] text-white" : "",
                     !isSelected && !isToday ? "text-[#333333] hover:bg-[#f7f6f3]" : "",
                     !cell.inMonth ? "text-[#cccccc]" : ""
@@ -218,7 +218,7 @@ export function CalendarCard({ eventsByDate }: CalendarCardProps) {
                   <span className="font-syne text-[13px]">{cell.day}</span>
                   {hasMeeting || hasDeadline ? (
                     <span className="absolute bottom-[5px] flex items-center gap-1">
-                      {hasMeeting ? <span className="h-1 w-1 rounded-full bg-[#00b4a0]" /> : null}
+                      {hasMeeting ? <span className="h-1 w-1 rounded-full bg-[#111827]" /> : null}
                       {hasDeadline ? <span className="h-1 w-1 rounded-[1px] bg-[#f59340]" /> : null}
                     </span>
                   ) : null}

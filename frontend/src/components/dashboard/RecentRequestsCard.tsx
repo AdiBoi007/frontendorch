@@ -44,7 +44,7 @@ function getStatusTone(status: RequestItem["status"]) {
     return "border-[#f59340] bg-[#fceee4] text-[#f59340]";
   }
 
-  return "border-[#00b4a0] bg-[#e8faf7] text-[#00b4a0]";
+  return "border-[#111827] bg-[#f4f4f5] text-[#111827]";
 }
 
 export function RecentRequestsCard({ requests }: RecentRequestsCardProps) {

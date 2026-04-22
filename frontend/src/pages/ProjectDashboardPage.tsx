@@ -153,7 +153,7 @@ const selectedMeetingItemVariants = {
 
 const roleBadgeStyles = {
   manager: { background: "#e0dbf5", color: "#8b7fd4", label: "MANAGER" },
-  dev: { background: "#c8f0e8", color: "#00b4a0", label: "DEV" },
+  dev: { background: "#e5e7eb", color: "#111827", label: "DEV" },
   client: { background: "#fceee4", color: "#f59340", label: "CLIENT" }
 } as const;
 
@@ -271,8 +271,8 @@ function formatRoleLabel(role: ProjectMember["role"]) {
 function getStatusTone(status: ProjectDetail["recentChanges"][number]["status"]) {
   if (status === "accepted") {
     return {
-      bar: "#00b4a0",
-      badgeClassName: "bg-[#e8faf7] text-[#00b4a0]"
+      bar: "#111827",
+      badgeClassName: "bg-[#f4f4f5] text-[#111827]"
     };
   }
 
@@ -284,7 +284,7 @@ function getStatusTone(status: ProjectDetail["recentChanges"][number]["status"])
 
 function getMeetingTypeColor(type: (typeof mockMeetings)[number]["type"]) {
   if (type === "standup") {
-    return "#00b4a0";
+    return "#111827";
   }
 
   if (type === "review") {
@@ -313,7 +313,7 @@ function TeamAvatar({ member, size = 36, openSlot = false }: TeamAvatarProps) {
         type="button"
         variants={avatarVariants}
         whileHover={{ scale: 1.15, zIndex: 10 }}
-        className="flex items-center justify-center rounded-full border-2 border-dashed border-[#d0d0cc] bg-transparent font-syne text-[18px] leading-none text-[#cccccc] transition-colors hover:border-[#00b4a0] hover:text-[#00b4a0]"
+        className="flex items-center justify-center rounded-full border-2 border-dashed border-[#d0d0cc] bg-transparent font-syne text-[18px] leading-none text-[#cccccc] transition-colors hover:border-[#111827] hover:text-[#111827]"
         style={{ width: size, height: size }}
       >
         <PlusIcon className="h-[18px] w-[18px]" />
@@ -454,7 +454,7 @@ export function ProjectDashboardPage() {
 
     return [
       { label: "MANAGERS", color: "#8b7fd4", width: `${managerPercent}%` },
-      { label: "DEVS", color: "#00b4a0", width: `${devPercent}%` },
+      { label: "DEVS", color: "#111827", width: `${devPercent}%` },
       { label: "CLIENTS", color: "#f59340", width: `${clientPercent}%` }
     ];
   }, [members]);
@@ -524,7 +524,7 @@ export function ProjectDashboardPage() {
                 initial={{ width: 0 }}
                 animate={{ width: `${project.progress}%` }}
                 transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-                className="h-full rounded-full bg-[#00b4a0]"
+                className="h-full rounded-full bg-[#111827]"
               />
             </div>
           </div>
@@ -534,7 +534,7 @@ export function ProjectDashboardPage() {
           <div className="solid-card px-7 py-6">
             <div className="flex items-center">
               <p className="font-bebas text-[11px] tracking-[0.18em] text-[#999999]">TEAM</p>
-              <button type="button" className="ml-auto font-syne text-[11px] text-[#00b4a0]">
+              <button type="button" className="ml-auto font-syne text-[11px] text-[#111827]">
                 MANAGE
               </button>
             </div>
@@ -598,7 +598,7 @@ export function ProjectDashboardPage() {
                             className={[
                               "flex h-[18px] w-[18px] items-center justify-center rounded-md transition-colors",
                               isSelected
-                                ? "bg-[#00b4a0] font-bebas text-[10px] text-white"
+                                ? "bg-[#111827] font-bebas text-[10px] text-white"
                                 : isToday
                                   ? "bg-[#0a0a0a] font-bebas text-[10px] text-white"
                                   : item.inCurrentMonth
@@ -610,7 +610,7 @@ export function ProjectDashboardPage() {
                           </button>
                           <span
                             className="mt-[2px] h-[3px] w-[3px] rounded-full"
-                            style={{ backgroundColor: hasMeetings ? "#00b4a0" : "transparent" }}
+                            style={{ backgroundColor: hasMeetings ? "#111827" : "transparent" }}
                           />
                         </div>
                       );
@@ -663,7 +663,7 @@ export function ProjectDashboardPage() {
           <div className="solid-card p-6">
             <div className="flex items-center">
               <p className="font-bebas text-[11px] tracking-[0.16em] text-[#999999]">RECENT CHANGES</p>
-              <button type="button" onClick={() => navigate(`/projects/${id}/requests`)} className="ml-auto font-syne text-[11px] text-[#00b4a0]">
+              <button type="button" onClick={() => navigate(`/projects/${id}/requests`)} className="ml-auto font-syne text-[11px] text-[#111827]">
                 <span className="inline-flex items-center gap-1">
                   VIEW ALL
                   <ArrowRightIcon className="h-[14px] w-[14px]" />
@@ -721,13 +721,13 @@ export function ProjectDashboardPage() {
                     key={subscription.id}
                     variants={subscriptionCardVariants}
                     whileHover={{ y: -2 }}
-                    className="rounded-2xl border border-[#e8e8e4] bg-[#fafaf8] px-5 py-4 transition-colors hover:border-[#00b4a0] hover:bg-white"
+                    className="rounded-2xl border border-[#e8e8e4] bg-[#fafaf8] px-5 py-4 transition-colors hover:border-[#111827] hover:bg-white"
                   >
                     <div className="flex items-center gap-3">
                       <SubscriptionLogo name={subscription.name} />
 
                       <p className="min-w-0 flex-1 truncate font-syne text-[13px] font-semibold text-[#0a0a0a]">{subscription.name}</p>
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#00b4a0]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#111827]" />
                     </div>
 
                     <div className="mt-3 flex items-end gap-2">
@@ -749,7 +749,7 @@ export function ProjectDashboardPage() {
             <button
               type="button"
               onClick={() => setShowSubscriptionModal(true)}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed border-[#d0d0cc] px-5 py-3.5 font-syne text-[13px] text-[#888888] transition-colors hover:border-[#00b4a0] hover:bg-[rgba(0,180,160,0.04)] hover:text-[#00b4a0]"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed border-[#d0d0cc] px-5 py-3.5 font-syne text-[13px] text-[#888888] transition-colors hover:border-[#111827] hover:bg-[rgba(17,24,39,0.04)] hover:text-[#111827]"
             >
               <PlusIcon className="h-4 w-4" />
               <span>ADD SUBSCRIPTION</span>
@@ -761,7 +761,7 @@ export function ProjectDashboardPage() {
           <motion.div initial="hidden" animate="visible" variants={quickLaunchVariants} className="grid gap-4 xl:grid-cols-4">
             <QuickLaunchCard
               icon={<SparklesIcon className="h-6 w-6" />}
-              accent="#00b4a0"
+              accent="#111827"
               title="BRAIN"
               subtitle="Neural knowledge map"
               onClick={() => navigate(`/projects/${id}/brain`)}
@@ -814,7 +814,7 @@ export function ProjectDashboardPage() {
                   <input
                     value={subscriptionName}
                     onChange={(event) => setSubscriptionName(event.target.value)}
-                    className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#00b4a0]"
+                    className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#111827]"
                   />
                 </label>
 
@@ -823,7 +823,7 @@ export function ProjectDashboardPage() {
                   <input
                     value={subscriptionCategory}
                     onChange={(event) => setSubscriptionCategory(event.target.value)}
-                    className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#00b4a0]"
+                    className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#111827]"
                   />
                 </label>
 
@@ -833,7 +833,7 @@ export function ProjectDashboardPage() {
                     value={subscriptionCost}
                     onChange={(event) => setSubscriptionCost(event.target.value)}
                     inputMode="decimal"
-                    className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#00b4a0]"
+                    className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#111827]"
                   />
                 </label>
               </div>
@@ -845,7 +845,7 @@ export function ProjectDashboardPage() {
                 <button
                   type="button"
                   onClick={handleAddSubscription}
-                  className="rounded-xl bg-[#0a0a0a] px-5 py-2.5 font-bebas text-[13px] tracking-[0.08em] text-white transition-colors hover:bg-[#00b4a0]"
+                  className="rounded-xl bg-[#0a0a0a] px-5 py-2.5 font-bebas text-[13px] tracking-[0.08em] text-white transition-colors hover:bg-[#111827]"
                 >
                   ADD
                 </button>

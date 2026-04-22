@@ -56,10 +56,10 @@ function platformBadge(platform: AnchorProvenance["linkedMessages"][number]["pla
 
 function renderHeadingLevel(level: number | undefined) {
   if (level === 1) {
-    return "font-bebas text-[32px] leading-none text-[#0a0a0a] mt-10 mb-4";
+    return "font-sans text-[26px] font-bold leading-tight tracking-tight text-text1 mt-10 mb-4 md:text-[28px]";
   }
 
-  return "font-bebas text-[22px] leading-none text-[#0a0a0a] mt-8 mb-3";
+  return "font-sans text-xl font-bold leading-tight tracking-tight text-text1 mt-8 mb-3 md:text-[22px]";
 }
 
 function applyDrafts(viewer: DocViewerPayload, drafts: SectionDrafts): DocViewerPayload {
@@ -179,7 +179,7 @@ export function LiveDocViewerPage() {
           <input
             value={currentValue}
             onChange={(event) => handleSectionChange(section.id, event.target.value)}
-            className="w-full rounded-xl border border-[#e5e5e0] bg-white px-4 py-3 font-syne text-[15px] text-[#333333] outline-none transition-colors focus:border-[#00b4a0]"
+            className="w-full rounded-lg border border-border bg-white px-4 py-3 font-sans text-doc text-textBody outline-none transition-colors focus:border-text1"
           />
         );
       }
@@ -189,9 +189,9 @@ export function LiveDocViewerPage() {
 
     if (section.type === "paragraph") {
       const interactive = !editMode && isChanged;
-      const baseBorder = isCited ? "#00b4a0" : "#f59340";
-      const baseBackground = isCited ? "rgba(0,180,160,0.04)" : "rgba(245,147,64,0.04)";
-      const hoverBackground = isCited ? "rgba(0,180,160,0.08)" : "rgba(245,147,64,0.08)";
+      const baseBorder = isCited ? "#111827" : "#f59340";
+      const baseBackground = isCited ? "rgba(17,24,39,0.04)" : "rgba(245,147,64,0.04)";
+      const hoverBackground = isCited ? "rgba(17,24,39,0.08)" : "rgba(245,147,64,0.08)";
       const highlightStyle =
         isChanged || isCited
           ? {
@@ -207,7 +207,7 @@ export function LiveDocViewerPage() {
           <textarea
             value={currentValue}
             onChange={(event) => handleSectionChange(section.id, event.target.value)}
-            className="w-full resize-y rounded-xl border border-[#e5e5e0] bg-white px-4 py-3 font-syne text-[14px] leading-[1.8] text-[#333333] outline-none transition-colors focus:border-[#00b4a0]"
+            className="w-full resize-y rounded-lg border border-border bg-white px-4 py-3 font-sans text-docSm leading-[1.75] text-textBody outline-none transition-colors focus:border-text1"
             style={{ minHeight: 80 }}
           />
         );
@@ -215,8 +215,8 @@ export function LiveDocViewerPage() {
 
       return (
         <motion.div
-          initial={isCited ? { backgroundColor: "rgba(0,180,160,0)" } : false}
-          animate={isCited ? { backgroundColor: ["rgba(0,180,160,0)", "rgba(0,180,160,0.15)", "rgba(0,180,160,0.04)"] } : undefined}
+          initial={isCited ? { backgroundColor: "rgba(17,24,39,0)" } : false}
+          animate={isCited ? { backgroundColor: ["rgba(17,24,39,0)", "rgba(17,24,39,0.15)", "rgba(17,24,39,0.04)"] } : undefined}
           transition={isCited ? { duration: 1.2, times: [0, 0.45, 1] } : undefined}
           className={[
             "relative mb-5 transition-colors",
@@ -247,21 +247,21 @@ export function LiveDocViewerPage() {
           }}
         >
           {isChanged ? (
-            <span className="absolute right-0 top-0 rounded-full bg-[rgba(245,147,64,0.1)] px-2 py-[2px] font-bebas text-[9px] tracking-[0.18em] text-[#f59340]">
-              CHANGED
+            <span className="absolute right-0 top-0 rounded-full bg-amber-50 px-2 py-[2px] font-sans text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-800">
+              Changed
             </span>
           ) : null}
 
-          <p className="font-syne text-[15px] leading-[1.8] text-[#333333]">{currentValue}</p>
+          <p className="font-sans text-doc leading-[1.75] text-textBody">{currentValue}</p>
 
-          {isSelected ? <span className="absolute inset-0 rounded-r-lg ring-1 ring-[rgba(0,180,160,0.15)]" /> : null}
+          {isSelected ? <span className="absolute inset-0 rounded-r-lg ring-1 ring-[rgba(17,24,39,0.15)]" /> : null}
         </motion.div>
       );
     }
 
     if (section.type === "list") {
       return (
-        <ul className="mb-5 list-disc pl-5 font-syne text-[15px] leading-[1.8] text-[#333333]">
+        <ul className="mb-5 list-disc pl-5 font-sans text-doc leading-[1.75] text-textBody">
           {currentValue.split("\n").map((item) => (
             <li key={item}>{item}</li>
           ))}
@@ -270,12 +270,12 @@ export function LiveDocViewerPage() {
     }
 
     return (
-      <pre className="mb-5 overflow-x-auto rounded-2xl bg-[#f0f0ec] p-4 font-mono text-[13px] leading-6 text-[#333333]">{currentValue}</pre>
+      <pre className="mb-5 overflow-x-auto rounded-lg bg-zinc-100 p-4 font-mono text-[13px] leading-6 text-textBody">{currentValue}</pre>
     );
   };
 
   return (
-    <section className="doc-viewer-root relative h-full overflow-hidden bg-[#f7f6f3]">
+    <section className="doc-viewer-root relative h-full overflow-hidden bg-bg">
       <style>{`
         @media print {
           .doc-viewer-topbar,
@@ -299,87 +299,90 @@ export function LiveDocViewerPage() {
         }
       `}</style>
 
-      <div className="doc-viewer-topbar absolute inset-x-0 top-0 z-10 flex h-[52px] items-center gap-4 border-b border-[rgba(0,0,0,0.06)] bg-[rgba(247,246,243,0.95)] px-8 backdrop-blur-md">
-        <div className="flex min-w-0 items-center gap-4">
+      <div className="doc-viewer-topbar absolute inset-x-0 top-0 z-10 flex h-[52px] items-center gap-4 border-b border-border bg-bg/95 px-6 backdrop-blur-md md:px-8">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="text-[#888888] transition-colors hover:text-[#0a0a0a]"
+            className="text-text2 transition-colors hover:text-text1"
           >
             <ArrowLeftIcon className="h-4 w-4" />
           </button>
-          <span className="h-4 w-px bg-[#e5e5e0]" />
-          <p className="truncate font-bebas text-[15px] text-[#0a0a0a]">{projectName.toUpperCase()}</p>
-          <span className="font-syne text-[13px] text-[#cccccc]">/</span>
-          <p className="truncate font-bebas text-[13px] tracking-[0.08em] text-[#00b4a0]">{viewer?.title.toUpperCase() ?? "DOCUMENT"}</p>
+          <span className="h-4 w-px bg-border" />
+          <p className="truncate font-sans text-meta font-medium text-text1">{projectName}</p>
+          <span className="font-sans text-meta text-text3">/</span>
+          <p className="truncate font-sans text-meta text-text2">{viewer?.title ?? "Document"}</p>
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
-          <span className="rounded-full border border-[#e5e5e0] bg-[#f0f0ec] px-[10px] py-1 font-mono text-[11px] text-[#888888]">
+        <div className="ml-auto flex items-center gap-2 md:gap-3">
+          <span className="rounded-md border border-border bg-white px-2.5 py-1 font-mono text-[10px] text-text2">
             {viewer?.version ?? "v0.0"}
           </span>
 
           <motion.button
             type="button"
-            whileHover={{ borderColor: "#00b4a0", color: "#00b4a0" }}
+            whileHover={{ borderColor: "#111827", color: "#111827" }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setEditMode((current) => !current)}
-            className="rounded-xl border border-[#e5e5e0] px-[14px] py-[6px] font-syne text-[12px] text-[#555555]"
+            className="rounded-md border border-border bg-white px-3 py-1.5 font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-textBody"
           >
-            EDIT
+            Edit
           </motion.button>
 
           {editMode ? (
             <motion.button
               type="button"
-              whileHover={{ backgroundColor: "#00b4a0" }}
+              whileHover={{ opacity: 0.92 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleSave}
-              className="rounded-xl bg-[#00b4a0] px-[14px] py-[6px] font-bebas text-[12px] tracking-[0.08em] text-white"
+              className="rounded-md bg-text1 px-3 py-1.5 font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-white"
             >
-              SAVE
+              Save
             </motion.button>
           ) : null}
 
           <motion.button
             type="button"
-            whileHover={{ backgroundColor: "#00b4a0" }}
+            whileHover={{ opacity: 0.92 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => window.print()}
-            className="rounded-xl bg-[#0a0a0a] px-[14px] py-[6px] font-bebas text-[12px] tracking-[0.08em] text-white"
+            className="rounded-md bg-text1 px-3 py-1.5 font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-white"
           >
-            EXPORT PDF
+            Export PDF
           </motion.button>
         </div>
       </div>
 
       <div className={["flex h-full pt-[52px]", selectedAnchor ? "pr-[360px]" : ""].join(" ")}>
         <div className="doc-viewer-document flex-1 overflow-y-auto">
-          <div className="doc-viewer-content mx-auto max-w-[720px] px-12 pb-20 pt-[72px]">
+          <div className="doc-viewer-content mx-auto max-w-[720px] px-6 pb-20 pt-10 md:px-12 md:pt-14">
             <div className="mb-10">
-              <div className="flex items-start gap-4">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#f0faf8] text-[#00b4a0]">
+              <p className="font-sans text-label font-semibold uppercase text-text2">Live document</p>
+              <div className="mt-3 flex items-start gap-4">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-text1">
                   <FileTextIcon className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="font-bebas text-[28px] leading-none text-[#0a0a0a]">{viewer?.title ?? "Loading Document"}</h1>
-                    <span className="font-mono text-[12px] text-[#888888]">{viewer?.version}</span>
+                    <h1 className="font-sans text-[26px] font-bold leading-tight tracking-tight text-text1 md:text-[28px]">
+                      {viewer?.title ?? "Loading Document"}
+                    </h1>
+                    <span className="font-mono text-meta text-text2">{viewer?.version}</span>
                   </div>
-                  <p className="mt-2 font-syne text-[12px] text-[#888888]">
+                  <p className="mt-2 font-sans text-meta text-text2">
                     Uploaded by {viewer?.uploadedBy ?? "Unknown"} · {viewer?.uploadedAt ?? "Unknown"}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="mb-8 flex items-center gap-2 font-syne text-[12px] text-[#888888]">
+            <div className="mb-8 flex items-center gap-2 font-sans text-meta text-text2">
               <span>Sections with</span>
               <span className="h-2 w-2 rounded-full bg-[#f59340]" />
               <span>have accepted changes. Click any section to see source evidence.</span>
             </div>
 
-            <div className="mb-10 h-px bg-[#eeeeea]" />
+            <div className="mb-10 h-px bg-border" />
 
             <motion.div initial="hidden" animate="visible" variants={sectionStagger}>
               {viewer?.sections.map((section) => (
@@ -403,50 +406,50 @@ export function LiveDocViewerPage() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 360, opacity: 0 }}
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="doc-viewer-provenance fixed bottom-0 right-0 top-0 z-30 w-[360px] overflow-y-auto border-l border-[rgba(0,0,0,0.08)] bg-[rgba(255,255,255,0.98)] p-6 shadow-[-8px_0_48px_rgba(0,0,0,0.1)] backdrop-blur-[20px]"
+            className="doc-viewer-provenance fixed bottom-0 right-0 top-0 z-30 w-[360px] overflow-y-auto border-l border-border bg-white p-6 shadow-sm"
           >
             <div className="mb-5 flex items-center">
-              <p className="font-bebas text-[13px] tracking-[0.12em] text-[#0a0a0a]">SOURCE EVIDENCE</p>
+              <p className="font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-text1">Source evidence</p>
               <button
                 type="button"
                 onClick={() => setSelectedAnchor(null)}
-                className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f5f2] text-[#888888] transition-colors hover:bg-[#e5e5e0]"
+                className="ml-auto flex h-7 w-7 items-center justify-center rounded-full bg-zinc-100 text-text2 transition-colors hover:bg-zinc-200"
               >
                 <CloseIcon className="h-4 w-4" />
               </button>
             </div>
 
             {isLoadingProvenance ? (
-              <p className="font-syne text-[13px] text-[#888888]">Loading source evidence…</p>
+              <p className="font-sans text-[13px] text-text2">Loading source evidence…</p>
             ) : provenance ? (
               <>
                 <div className="mb-5">
-                  <p className="mb-2 font-bebas text-[10px] tracking-[0.16em] text-[#999999]">CITED TEXT</p>
-                  <p className="mb-2 font-mono text-[11px] text-[#bbbbbb]">{provenance.sourceDoc}</p>
-                  <div className="rounded-r-lg bg-[rgba(245,147,64,0.04)] py-2 pl-3" style={{ borderLeft: "3px solid #f59340" }}>
-                    <p className="font-syne text-[13px] italic leading-6 text-[#555555]">{provenance.excerpt}</p>
+                  <p className="mb-2 font-sans text-[10px] font-semibold uppercase tracking-[0.14em] text-text2">Cited text</p>
+                  <p className="mb-2 font-mono text-[11px] text-text3">{provenance.sourceDoc}</p>
+                  <div className="rounded-r-lg bg-amber-50/80 py-2 pl-3" style={{ borderLeft: "3px solid #d97706" }}>
+                    <p className="font-sans text-[13px] italic leading-6 text-textBody">{provenance.excerpt}</p>
                   </div>
                 </div>
 
                 <div>
-                  <p className="mb-3 font-bebas text-[10px] tracking-[0.16em] text-[#999999]">SOURCE MESSAGES</p>
+                  <p className="mb-3 font-sans text-[10px] font-semibold uppercase tracking-[0.14em] text-text2">Source messages</p>
                   {provenance.linkedMessages.map((message) => {
                     const badge = platformBadge(message.platform);
 
                     return (
-                      <div key={message.id} className="mb-[10px] rounded-2xl border border-[#eeeeea] bg-white p-[14px]">
+                      <div key={message.id} className="mb-[10px] rounded-lg border border-border bg-white p-[14px]">
                         <div className="flex items-center">
                           <div
-                            className="flex h-7 w-7 items-center justify-center rounded-full font-bebas text-[12px]"
+                            className="flex h-7 w-7 items-center justify-center rounded-full font-sans text-[11px] font-semibold"
                             style={{ background: badge.bg, color: badge.text }}
                           >
                             {badge.label}
                           </div>
-                          <p className="ml-2 font-syne text-[12px] font-semibold text-[#0a0a0a]">{message.from}</p>
-                          <p className="ml-auto font-mono text-[11px] text-[#888888]">{message.sentAt}</p>
+                          <p className="ml-2 font-sans text-meta font-semibold text-text1">{message.from}</p>
+                          <p className="ml-auto font-mono text-[11px] text-text2">{message.sentAt}</p>
                         </div>
                         <p
-                          className="mt-2 font-syne text-[13px] italic leading-[1.6] text-[#555555]"
+                          className="mt-2 font-sans text-[13px] italic leading-[1.6] text-textBody"
                           style={{
                             display: "-webkit-box",
                             overflow: "hidden",
@@ -462,14 +465,14 @@ export function LiveDocViewerPage() {
                 </div>
 
                 <div className="mt-5">
-                  <p className="mb-3 font-bebas text-[10px] tracking-[0.16em] text-[#999999]">ACCEPTED CHANGES</p>
+                  <p className="mb-3 font-sans text-[10px] font-semibold uppercase tracking-[0.14em] text-text2">Accepted changes</p>
                   {provenance.acceptedChanges.map((change) => (
-                    <div key={change.id} className="mb-[10px] rounded-2xl border border-[rgba(0,180,160,0.2)] bg-[#f0faf8] p-[14px]">
-                      <p className="font-syne text-[13px] font-semibold text-[#0a0a0a]">{change.summary}</p>
+                    <div key={change.id} className="mb-[10px] rounded-lg border border-border bg-zinc-50 p-[14px]">
+                      <p className="font-sans text-[13px] font-semibold text-text1">{change.summary}</p>
                       <div className="mt-2 flex items-center">
-                        <span className="font-bebas text-[10px] tracking-[0.12em] text-[#00b4a0]">ACCEPTED</span>
-                        <span className="ml-2 font-syne text-[11px] text-[#888888]">{change.acceptedBy}</span>
-                        <span className="ml-auto font-mono text-[11px] text-[#888888]">{change.acceptedAt}</span>
+                        <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-text1">Accepted</span>
+                        <span className="ml-2 font-sans text-[11px] text-text2">{change.acceptedBy}</span>
+                        <span className="ml-auto font-mono text-[11px] text-text2">{change.acceptedAt}</span>
                       </div>
                     </div>
                   ))}
@@ -477,15 +480,15 @@ export function LiveDocViewerPage() {
 
                 <button
                   type="button"
-                  className="mt-6 w-full rounded-xl border-[1.5px] border-dashed border-[#d0d0cc] py-3 text-center font-syne text-[12px] text-[#888888] transition-colors hover:border-[#00b4a0] hover:bg-[rgba(0,180,160,0.04)] hover:text-[#00b4a0]"
+                  className="mt-6 w-full rounded-lg border border-dashed border-border py-3 text-center font-sans text-meta text-text2 transition-colors hover:border-text1 hover:bg-zinc-50 hover:text-text1"
                 >
-                  ASK SOCRATES ABOUT THIS SECTION
+                  Ask Socrates about this section
                 </button>
               </>
             ) : (
               <div>
-                <p className="font-syne text-[13px] text-[#888888]">No provenance available for this section.</p>
-                {activeSection ? <p className="mt-2 font-syne text-[12px] text-[#bbbbbb]">{activeSection.content}</p> : null}
+                <p className="font-sans text-[13px] text-text2">No provenance available for this section.</p>
+                {activeSection ? <p className="mt-2 font-sans text-meta text-text3">{activeSection.content}</p> : null}
               </div>
             )}
           </motion.aside>

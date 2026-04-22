@@ -10,7 +10,7 @@ export function ProjectRequestsPage() {
   return (
     <section className="h-full overflow-y-auto bg-bg px-8 py-10">
       <div className="mb-8">
-        <p className="font-bebas text-[12px] tracking-[0.18em] text-[#00b4a0]">REQUESTS</p>
+        <p className="font-bebas text-[12px] tracking-[0.18em] text-[#111827]">REQUESTS</p>
         <h1 className="mt-2 font-bebas text-[48px] leading-none text-[#0a0a0a]">{project.name.toUpperCase()}</h1>
         <p className="mt-2 font-syne text-[14px] text-[#888888]">Communication and change requests linked to this project.</p>
       </div>
@@ -27,7 +27,7 @@ export function ProjectRequestsPage() {
                 <p className="mt-2 font-syne text-[14px] leading-6 text-[#666666]">{request.message}</p>
               </div>
               <div className="ml-auto text-right">
-                <p className="font-bebas text-[12px] tracking-[0.16em] text-[#00b4a0]">{request.status.toUpperCase()}</p>
+                <p className="font-bebas text-[12px] tracking-[0.16em] text-[#111827]">{request.status.toUpperCase()}</p>
                 <p className="mt-1 font-syne text-[12px] text-[#888888]">{request.time}</p>
               </div>
             </div>

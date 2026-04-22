@@ -103,9 +103,9 @@ const categoryVisuals: Record<
   }
 > = {
   docs: {
-    accent: "#00b4a0",
-    tint: "#f0faf8",
-    border: "rgba(0,180,160,0.2)",
+    accent: "#111827",
+    tint: "#f4f4f5",
+    border: "rgba(17,24,39,0.2)",
     text: "#00806f",
     icon: "file-text",
     typeLabel: "DOC"
@@ -135,9 +135,9 @@ const categoryVisuals: Record<
     typeLabel: "CHANGE"
   },
   decisions: {
-    accent: "#00b4a0",
-    tint: "#f0faf8",
-    border: "rgba(0,180,160,0.2)",
+    accent: "#111827",
+    tint: "#f4f4f5",
+    border: "rgba(17,24,39,0.2)",
     text: "#00806f",
     icon: "check-square",
     typeLabel: "DECISION"
@@ -264,9 +264,9 @@ function createVisualNodes(seedNodes: BrainNodeData[]) {
         y: categoryLayout.core.top,
         size: centerNodeSize,
         background: "linear-gradient(145deg, #f5f0e8 0%, #ede8de 100%)",
-        borderColor: "rgba(0,180,160,0.3)",
+        borderColor: "rgba(17,24,39,0.3)",
         textColor: "#0a0a0a",
-        accentColor: "#00b4a0"
+        accentColor: "#111827"
       };
     }
 
@@ -701,13 +701,13 @@ export function ProjectBrainPage() {
           <span className="mx-4 h-4 w-px bg-[#e5e5e0]" />
           <p className="font-bebas text-[15px] text-[#0a0a0a]">{project.name.toUpperCase()}</p>
           <span className="mx-2 font-syne text-[13px] text-[#cccccc]">/</span>
-          <p className="font-bebas text-[12px] tracking-[0.12em] text-[#00b4a0]">BRAIN</p>
+          <p className="font-bebas text-[12px] tracking-[0.12em] text-[#111827]">BRAIN</p>
         </div>
 
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="flex items-center gap-2 rounded-full border border-[rgba(0,180,160,0.2)] bg-[rgba(0,180,160,0.08)] px-3 py-1">
+          <div className="flex items-center gap-2 rounded-full border border-[rgba(17,24,39,0.2)] bg-[rgba(17,24,39,0.08)] px-3 py-1">
             <span className="h-2 w-2 rounded-full bg-[#00b46e]" />
-            <span className="font-syne text-[11px] font-semibold text-[#00b4a0]">BRAIN ACTIVE</span>
+            <span className="font-syne text-[11px] font-semibold text-[#111827]">BRAIN ACTIVE</span>
           </div>
         </div>
 
@@ -715,14 +715,14 @@ export function ProjectBrainPage() {
           <button
             type="button"
             onClick={() => openUploadModal()}
-            className="rounded-xl border border-[#e5e5e0] px-[14px] py-[7px] font-syne text-[12px] text-[#555555] transition-colors hover:border-[#00b4a0] hover:text-[#00b4a0]"
+            className="rounded-xl border border-[#e5e5e0] px-[14px] py-[7px] font-syne text-[12px] text-[#555555] transition-colors hover:border-[#111827] hover:text-[#111827]"
           >
             UPLOAD
           </button>
           <button
             type="button"
             onClick={resetBrainView}
-            className="rounded-xl border border-[rgba(255,255,255,0.78)] bg-[linear-gradient(135deg,rgba(244,242,252,0.94),rgba(232,250,246,0.92))] px-[14px] py-[7px] font-bebas text-[12px] tracking-[0.08em] text-[#38524d] shadow-[0_10px_24px_rgba(139,127,212,0.1)] backdrop-blur-[16px] transition-all hover:border-[rgba(0,180,160,0.28)] hover:text-[#00b4a0]"
+            className="rounded-xl border border-[rgba(255,255,255,0.78)] bg-[linear-gradient(135deg,rgba(244,242,252,0.94),rgba(232,250,246,0.92))] px-[14px] py-[7px] font-bebas text-[12px] tracking-[0.08em] text-[#38524d] shadow-[0_10px_24px_rgba(139,127,212,0.1)] backdrop-blur-[16px] transition-all hover:border-[rgba(17,24,39,0.28)] hover:text-[#111827]"
           >
             REBUILD
           </button>
@@ -734,11 +734,11 @@ export function ProjectBrainPage() {
         onWheel={handleWheel}
         className="absolute inset-x-0 bottom-0 top-14 overflow-hidden bg-[#fafaf8]"
         style={{
-          backgroundImage: "radial-gradient(circle, rgba(0,180,160,0.12) 1px, transparent 1px)",
+          backgroundImage: "radial-gradient(circle, rgba(17,24,39,0.12) 1px, transparent 1px)",
           backgroundSize: "28px 28px"
         }}
       >
-        <div className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(0,180,160,0.06)_0%,transparent_70%)]" />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(17,24,39,0.06)_0%,transparent_70%)]" />
 
         <motion.div initial={hasAnimated.current ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: hasAnimated.current ? 0 : 0.3 }} className="absolute inset-0">
           <motion.div
@@ -764,7 +764,7 @@ export function ProjectBrainPage() {
 
                 const highlighted = hoveredNodeId ? edge.from === hoveredNodeId || edge.to === hoveredNodeId : false;
                 const stroke =
-                  edge.kind === "core" ? hexToRgba("#00b4a0", highlighted ? 1 : 0.2) : highlighted ? hexToRgba("#0a0a0a", 1) : "rgba(0,0,0,0.06)";
+                  edge.kind === "core" ? hexToRgba("#111827", highlighted ? 1 : 0.2) : highlighted ? hexToRgba("#0a0a0a", 1) : "rgba(0,0,0,0.06)";
                 const strokeWidth = edge.kind === "core" ? 1.5 : 1;
                 const isFreshEdge = freshEdgeIds.includes(edge.id);
                 const shouldDraw = isFreshEdge || (!hasAnimated.current && edge.kind === "core");
@@ -811,7 +811,7 @@ export function ProjectBrainPage() {
                         cx={fromPosition.x}
                         cy={fromPosition.y}
                         r="2"
-                        fill="#00b4a0"
+                        fill="#111827"
                         opacity={0.8}
                         animate={{
                           cx: [fromPosition.x, toPosition.x],
@@ -900,17 +900,17 @@ export function ProjectBrainPage() {
                   {isCore ? (
                     <div className="relative flex items-center justify-center" style={{ width: centerNodeSize, height: centerNodeSize }}>
                       <motion.div
-                        className="pointer-events-none absolute inset-[-14px] rounded-full border-[1.5px] border-[rgba(0,180,160,0.25)]"
+                        className="pointer-events-none absolute inset-[-14px] rounded-full border-[1.5px] border-[rgba(17,24,39,0.25)]"
                         animate={{ scale: [1, 1.2], opacity: [1, 0] }}
                         transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
                       />
                       <motion.div
-                        className="pointer-events-none absolute inset-[-28px] rounded-full border border-[rgba(0,180,160,0.12)]"
+                        className="pointer-events-none absolute inset-[-28px] rounded-full border border-[rgba(17,24,39,0.12)]"
                         animate={{ scale: [1, 1.2], opacity: [0.5, 0] }}
                         transition={{ duration: 2.5, delay: 0.6, repeat: Infinity, ease: "easeOut" }}
                       />
                       <motion.div
-                        className="pointer-events-none absolute inset-[-42px] rounded-full border border-[rgba(0,180,160,0.06)]"
+                        className="pointer-events-none absolute inset-[-42px] rounded-full border border-[rgba(17,24,39,0.06)]"
                         animate={{ scale: [1, 1.25], opacity: [0.3, 0] }}
                         transition={{ duration: 2.5, delay: 1.2, repeat: Infinity, ease: "easeOut" }}
                       />
@@ -919,13 +919,13 @@ export function ProjectBrainPage() {
                         className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-1 rounded-full"
                         style={{
                           background: "linear-gradient(145deg, #f5f0e8 0%, #ede8de 100%)",
-                          border: "2px solid rgba(0,180,160,0.3)",
-                          boxShadow: "0 0 0 10px rgba(0,180,160,0.06), 0 0 0 20px rgba(0,180,160,0.03), 0 16px 48px rgba(0,0,0,0.12)"
+                          border: "2px solid rgba(17,24,39,0.3)",
+                          boxShadow: "0 0 0 10px rgba(17,24,39,0.06), 0 0 0 20px rgba(17,24,39,0.03), 0 16px 48px rgba(0,0,0,0.12)"
                         }}
                       >
-                        <span className="mb-1 block h-[6px] w-[6px] rotate-45 bg-[#00b4a0]" />
+                        <span className="mb-1 block h-[6px] w-[6px] rotate-45 bg-[#111827]" />
                         <span className="font-bebas text-[15px] tracking-[0.16em] text-[#0a0a0a]">BRAIN</span>
-                        <span className="mt-1 block h-[1.5px] w-5 rounded-full bg-[rgba(0,180,160,0.8)]" />
+                        <span className="mt-1 block h-[1.5px] w-5 rounded-full bg-[rgba(17,24,39,0.8)]" />
                       </div>
                     </div>
                   ) : null}
@@ -1094,8 +1094,8 @@ export function ProjectBrainPage() {
                           className={[
                             "flex items-center gap-2 rounded-xl border-[1.5px] px-4 py-3 text-left transition-colors",
                             selected
-                              ? "border-[#00b4a0] bg-[rgba(0,180,160,0.06)]"
-                              : "border-[#e5e5e0] hover:border-[#00b4a0]"
+                              ? "border-[#111827] bg-[rgba(17,24,39,0.06)]"
+                              : "border-[#e5e5e0] hover:border-[#111827]"
                           ].join(" ")}
                         >
                           <option.icon className="h-[18px] w-[18px]" />
@@ -1110,7 +1110,7 @@ export function ProjectBrainPage() {
                     <input
                       value={uploadName}
                       onChange={(event) => setUploadName(event.target.value)}
-                      className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#00b4a0]"
+                      className="w-full rounded-xl border border-[#e5e5e0] px-3.5 py-2.5 font-syne text-[13px] text-[#333333] outline-none transition-colors focus:border-[#111827]"
                     />
                   </div>
 
@@ -1122,7 +1122,7 @@ export function ProjectBrainPage() {
                       type="button"
                       onClick={handleUploadSubmit}
                       disabled={!uploadName.trim()}
-                      className="rounded-xl bg-[#0a0a0a] px-5 py-2.5 font-bebas text-[13px] tracking-[0.06em] text-white transition-colors hover:bg-[#00b4a0] disabled:cursor-not-allowed disabled:bg-[#cfcfcb]"
+                      className="rounded-xl bg-[#0a0a0a] px-5 py-2.5 font-bebas text-[13px] tracking-[0.06em] text-white transition-colors hover:bg-[#111827] disabled:cursor-not-allowed disabled:bg-[#cfcfcb]"
                     >
                       ADD TO BRAIN
                     </button>

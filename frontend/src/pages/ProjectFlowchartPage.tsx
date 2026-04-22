@@ -52,10 +52,10 @@ const typeStyles: Record<
   }
 > = {
   flow: {
-    bg: "#e8faf6",
-    border: "rgba(0,180,160,0.4)",
-    accent: "#00b4a0",
-    tagBg: "rgba(0,180,160,0.15)",
+    bg: "#f4f4f5",
+    border: "rgba(17,24,39,0.4)",
+    accent: "#111827",
+    tagBg: "rgba(17,24,39,0.15)",
     tagText: "#00806f"
   },
   module: {
@@ -107,9 +107,9 @@ const statusStyles: Record<
     pillText: "#f59340"
   },
   stable: {
-    dot: "#00b4a0",
-    pillBg: "#e8faf6",
-    pillText: "#00b4a0"
+    dot: "#111827",
+    pillBg: "#f4f4f5",
+    pillText: "#111827"
   },
   unresolved: {
     dot: "rgba(245,147,64,0.6)",
@@ -398,12 +398,12 @@ export function ProjectFlowchartPage() {
           <span className="mx-4 h-4 w-px bg-[#e5e5e0]" />
           <p className="truncate font-bebas text-[15px] text-[#0a0a0a]">{projectName.toUpperCase()}</p>
           <span className="mx-2 font-syne text-[13px] text-[#cccccc]">/</span>
-          <p className="font-bebas text-[12px] tracking-[0.12em] text-[#00b4a0]">FLOWCHART</p>
+          <p className="font-bebas text-[12px] tracking-[0.12em] text-[#111827]">FLOWCHART</p>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
           {([
-            ["FLOW", "#00b4a0"],
+            ["FLOW", "#111827"],
             ["MODULE", "#8b7fd4"],
             ["INTEGRATION", "#3b82f6"],
             ["APPROVAL", "#8b7fd4"],
@@ -458,7 +458,7 @@ export function ProjectFlowchartPage() {
                     <path
                       d={`M ${startX} ${startY} C ${c1x} ${c1y} ${c2x} ${c2y} ${endX} ${endY}`}
                       fill="none"
-                      stroke={edge.style === "solid" ? "#00b4a0" : "#f59340"}
+                      stroke={edge.style === "solid" ? "#111827" : "#f59340"}
                       strokeWidth={1.5}
                       strokeDasharray={edge.style === "dashed" ? "6 4" : undefined}
                       strokeLinecap="round"
@@ -468,7 +468,7 @@ export function ProjectFlowchartPage() {
                     <motion.path
                       d={`M ${startX} ${startY} C ${c1x} ${c1y} ${c2x} ${c2y} ${endX} ${endY}`}
                       fill="none"
-                      stroke={edge.style === "solid" ? "#00b4a0" : "#f59340"}
+                      stroke={edge.style === "solid" ? "#111827" : "#f59340"}
                       strokeWidth={1.5}
                       strokeDasharray={1000}
                       strokeLinecap="round"
@@ -634,7 +634,7 @@ export function ProjectFlowchartPage() {
             })}
 
             <span
-              className="absolute rounded-[6px] border border-[rgba(0,180,160,0.5)] bg-[rgba(0,180,160,0.08)]"
+              className="absolute rounded-[6px] border border-[rgba(17,24,39,0.5)] bg-[rgba(17,24,39,0.08)]"
               style={{
                 left: (visibleViewport.x / worldWidth) * miniMapWidth,
                 top: (visibleViewport.y / worldHeight) * miniMapHeight,
@@ -702,7 +702,7 @@ export function ProjectFlowchartPage() {
                     type="button"
                     className="mb-2 flex items-center gap-2.5 text-left transition-colors hover:text-[#0a0a0a]"
                   >
-                    <span className="text-[#00b4a0]">
+                    <span className="text-[#111827]">
                       <FileTextIcon className="h-[14px] w-[14px]" />
                     </span>
                     <span className="font-syne text-[12px] text-[#555555]">{docRef}</span>
@@ -724,7 +724,7 @@ export function ProjectFlowchartPage() {
               <div className="mt-auto p-6">
                 <button
                   type="button"
-                  className="w-full rounded-xl border-[1.5px] border-dashed border-[#d0d0cc] py-3 text-center font-syne text-[13px] text-[#888888] transition-colors hover:border-[#00b4a0] hover:bg-[rgba(0,180,160,0.04)] hover:text-[#00b4a0]"
+                  className="w-full rounded-xl border-[1.5px] border-dashed border-[#d0d0cc] py-3 text-center font-syne text-[13px] text-[#888888] transition-colors hover:border-[#111827] hover:bg-[rgba(17,24,39,0.04)] hover:text-[#111827]"
                 >
                   ASK SOCRATES ABOUT THIS
                 </button>

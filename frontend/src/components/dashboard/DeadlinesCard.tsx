@@ -31,7 +31,7 @@ const ringCircumference = 169.6;
 
 function getStatusColor(status: DeadlineItem["status"]) {
   if (status === "on-track") {
-    return "#00b4a0";
+    return "#111827";
   }
 
   if (status === "at-risk") {

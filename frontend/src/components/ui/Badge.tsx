@@ -4,7 +4,7 @@ type BadgeProps = {
 
 function getTone(variant: BadgeProps["variant"]) {
   if (variant === "HEALTHY") {
-    return "bg-[#e8faf7] text-[#00b4a0]";
+    return "bg-zinc-100 text-zinc-700";
   }
 
   if (variant === "AT RISK") {
@@ -16,7 +16,7 @@ function getTone(variant: BadgeProps["variant"]) {
 
 export function Badge({ variant }: BadgeProps) {
   return (
-    <span className={`inline-flex rounded-full px-3 py-1 font-bebas text-[11px] tracking-[0.14em] ${getTone(variant)}`}>
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-[0.12em] ${getTone(variant)}`}>
       {variant}
     </span>
   );

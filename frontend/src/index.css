@@ -3,17 +3,22 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f7f6f3;
+  --bg: #f3f4f6;
   --bg-1: #ffffff;
-  --bg-2: #f7f6f3;
-  --border: #eeeeea;
-  --teal: #00b4a0;
-  --teal-dim: rgba(0, 180, 160, 0.08);
-  --text-1: #0a0a0a;
-  --text-2: #888888;
-  --text-3: #999999;
-  font-family: "Syne", sans-serif;
-  color: var(--text-1);
+  --bg-2: #f3f4f6;
+  --sidebar: #111111;
+  --border: #e5e7eb;
+  --teal: #111827;
+  --teal-dim: rgba(17, 24, 39, 0.06);
+  --accent: #111827;
+  --highlight: #fef3c7;
+  --callout: #eff6ff;
+  --text-1: #000000;
+  --text-body: #374151;
+  --text-2: #6b7280;
+  --text-3: #9ca3af;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  color: var(--text-body);
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -34,9 +39,11 @@ body,
 body {
   margin: 0;
   min-width: 320px;
-  font-family: "Syne", sans-serif;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
   background: var(--bg);
-  color: var(--text-1);
+  color: var(--text-body);
   overflow-x: hidden;
 }
 
@@ -48,9 +55,16 @@ textarea::placeholder {
   color: var(--text-3);
 }
 
+/* Display / label style: replaces Bebas for UI chrome */
+.font-bebas {
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -64,17 +78,19 @@ textarea::placeholder {
 
 .solid-card {
   background: #ffffff;
-  border-radius: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 16px 48px rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .primary-button {
-  background: #0a0a0a;
+  background: #111111;
   color: #ffffff;
-  font-family: "Bebas Neue", sans-serif;
-  font-size: 15px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.08em;
-  border-radius: 16px;
-  padding: 12px 24px;
+  text-transform: uppercase;
+  border-radius: 8px;
+  padding: 10px 20px;
   border: 0;
 }

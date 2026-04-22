@@ -77,7 +77,7 @@ function renderFormattedText(content: string) {
   return content.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong key={`${part}-${index}`} className="font-semibold text-[#0a0a0a]">
+        <strong key={`${part}-${index}`} className="font-semibold text-text1">
           {part.slice(2, -2)}
         </strong>
       );
@@ -142,7 +142,7 @@ function StreamingDots() {
           key={`dot-${index}`}
           animate={{ y: [0, -4, 0], opacity: [0.5, 1, 0.5] }}
           transition={{ duration: 0.75, repeat: Infinity, ease: "easeInOut", delay: index * 0.15 }}
-          className="h-1 w-1 rounded-full bg-[#00b4a0]"
+          className="h-1 w-1 rounded-full bg-text1"
         />
       ))}
     </div>
@@ -158,17 +158,17 @@ function AssistantDiagramCard({ message }: { message: Message }) {
 
   return (
     <div className="max-w-full">
-      <p className="mb-2 font-syne text-[12px] leading-6 text-[#555555]">{renderFormattedText(message.content)}</p>
+      <p className="mb-2 font-sans text-meta leading-6 text-textBody">{renderFormattedText(message.content)}</p>
 
-      <div className="overflow-hidden rounded-2xl border border-[#e8e8e4] bg-white">
-        <div className="flex items-center gap-2 border-b border-[#f0f0ec] px-[14px] py-[10px]">
-          <p className="font-bebas text-[10px] tracking-[0.16em] text-[#999999]">
+      <div className="overflow-hidden rounded-lg border border-border bg-white">
+        <div className="flex items-center gap-2 border-b border-border px-[14px] py-[10px]">
+          <p className="font-sans text-[10px] font-semibold uppercase tracking-[0.14em] text-text2">
             {isDependency ? "LIVE DEPENDENCY MAP" : `${message.diagram.kind.toUpperCase()} DIAGRAM`}
           </p>
 
           {isDependency ? (
-            <span className="ml-auto rounded-md border border-[#f59340] bg-[#fceee4] px-2 py-[2px] font-bebas text-[10px] tracking-[0.08em] text-[#f59340]">
-              2 UNRESOLVED
+            <span className="ml-auto rounded-md border border-amber-200 bg-amber-50 px-2 py-[2px] font-sans text-[9px] font-semibold uppercase tracking-[0.1em] text-amber-800">
+              2 unresolved
             </span>
           ) : null}
         </div>
@@ -178,13 +178,13 @@ function AssistantDiagramCard({ message }: { message: Message }) {
         </div>
 
         {isDependency && message.diagram.stats ? (
-          <div className="flex gap-4 border-t border-[#f0f0ec] bg-[#fafaf8] px-[14px] py-2">
+          <div className="flex gap-4 border-t border-border bg-bg px-[14px] py-2">
             {message.diagram.stats.map((stat) => (
               <div key={stat.label}>
-                <p className="font-bebas text-[18px] leading-none" style={{ color: stat.color }}>
+                <p className="font-sans text-[18px] font-semibold leading-none" style={{ color: stat.color }}>
                   {stat.value}
                 </p>
-                <p className="mt-1 font-bebas text-[9px] tracking-[0.12em] text-[#999999]">{stat.label}</p>
+                <p className="mt-1 font-sans text-[9px] font-semibold uppercase tracking-[0.12em] text-text2">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -201,20 +201,20 @@ function AssistantMessage({ message, onOpenCitation }: { message: Message; onOpe
 
   return (
     <div className="max-w-[100%]">
-      <div className="rounded-2xl rounded-bl-sm border border-[#e8e8e4] bg-[#f5f4f0] px-[14px] py-3 font-syne text-[13px] leading-[1.6] text-[#333333]">
+      <div className="rounded-lg rounded-bl-sm border border-border bg-zinc-50 px-[14px] py-3 font-sans text-[13px] leading-[1.6] text-textBody">
         {renderFormattedText(message.content)}
       </div>
 
       {message.citations?.map((citation) => (
-        <div key={`${message.id}-${citation.anchor}`} className="mt-2 rounded-xl border border-[#e8e8e4] bg-white p-[10px]">
+        <div key={`${message.id}-${citation.anchor}`} className="mt-2 rounded-lg border border-border bg-white p-[10px]">
           <div className="flex items-center">
-            <TbFileText size={12} color="#00b4a0" strokeWidth={1.5} />
-            <span className="ml-1.5 font-mono text-[10px] text-[#888888]">{citation.source}</span>
+            <TbFileText size={12} color="#111827" strokeWidth={1.5} />
+            <span className="ml-1.5 font-mono text-[10px] text-text2">{citation.source}</span>
           </div>
 
-          <p className="mt-1 line-clamp-2 font-syne text-[11px] italic text-[#555555]">{citation.excerpt}</p>
+          <p className="mt-1 line-clamp-2 font-sans text-[11px] italic text-textBody">{citation.excerpt}</p>
 
-          <button type="button" onClick={() => onOpenCitation(citation.anchor)} className="mt-1 font-syne text-[10px] text-[#00b4a0]">
+          <button type="button" onClick={() => onOpenCitation(citation.anchor)} className="mt-1 font-sans text-[10px] font-medium text-text1">
             OPEN →
           </button>
         </div>
@@ -240,10 +240,10 @@ function MessageRow({
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%]">
-          <div className="rounded-2xl rounded-br-sm border border-[rgba(255,255,255,0.8)] bg-[linear-gradient(135deg,rgba(232,250,246,0.92),rgba(244,242,252,0.9))] px-[14px] py-[10px] font-syne text-[13px] text-[#254842] shadow-[0_10px_24px_rgba(139,127,212,0.12)] backdrop-blur-[18px]">
+          <div className="rounded-lg rounded-br-sm border border-border bg-white px-[14px] py-[10px] font-sans text-[13px] text-textBody shadow-sm">
             {message.content}
           </div>
-          <p className="mt-1 text-right font-mono text-[9px] text-[rgba(37,72,66,0.45)]">{formatTimestamp(message.timestamp)}</p>
+          <p className="mt-1 text-right font-mono text-[9px] text-text3">{formatTimestamp(message.timestamp)}</p>
         </div>
       </div>
     );
@@ -319,7 +319,7 @@ function SuggestionChips({ onSelect }: { onSelect: (value: string) => void }) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 8 }}
             transition={{ duration: 0.2, delay: index * 0.05 }}
-            className="rounded-full border border-[#e8e8e4] bg-white px-3 py-2 font-syne text-[11px] text-[#666666] transition-colors hover:border-[#00b4a0] hover:text-[#0a0a0a] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full border border-border bg-white px-3 py-2 font-sans text-[11px] text-textBody transition-colors hover:border-text1 hover:text-text1 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {suggestion}
           </motion.button>
@@ -392,23 +392,23 @@ function SocratesPanelContent() {
   };
 
   return (
-    <aside className="flex h-screen w-[300px] flex-shrink-0 flex-col border-r border-[#eeeeea] bg-white shadow-[4px_0_24px_rgba(0,0,0,0.04)]">
+    <aside className="flex h-screen w-[300px] flex-shrink-0 flex-col border-r border-border bg-white">
       <header className="px-6 pb-5 pt-8 text-center">
-        <div className="mt-8 flex justify-center">
-          <OmniLogo size={56} />
+        <div className="mt-6 flex justify-center">
+          <OmniLogo size={52} />
         </div>
-        <p className="mt-3 font-bebas text-[11px] tracking-[3px] text-[#999999]">SOCRATES</p>
+        <p className="mt-3 font-sans text-label font-semibold uppercase text-text2">Socrates</p>
         <div className="mt-1 flex items-center justify-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#00b4a0]" />
-          <p className="font-syne text-[12px] font-semibold text-[#00b4a0]">ONLINE</p>
+          <span className="h-1.5 w-1.5 rounded-full bg-text1" />
+          <p className="font-sans text-meta font-medium text-text2">Online</p>
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-3 text-center">
-            <p className="font-bebas text-[30px] leading-none text-[#0a0a0a]">Ready.</p>
-            <p className="mt-2 font-syne text-[13px] text-[#888888]">{emptyStateLabel}</p>
+            <p className="font-sans text-[22px] font-semibold leading-none text-text1">Ready</p>
+            <p className="mt-2 font-sans text-[13px] text-text2">{emptyStateLabel}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -423,7 +423,7 @@ function SocratesPanelContent() {
 
             {showStreamingIndicator ? (
               <div className="flex justify-start">
-                <div className="rounded-2xl rounded-bl-sm border border-[#e8e8e4] bg-[#f5f4f0] px-[14px] py-3">
+                <div className="rounded-lg rounded-bl-sm border border-border bg-zinc-50 px-[14px] py-3">
                   <StreamingDots />
                 </div>
               </div>
@@ -434,12 +434,12 @@ function SocratesPanelContent() {
         )}
       </div>
 
-      <div className="border-t border-[#eeeeea] px-4 py-4">
+      <div className="border-t border-border bg-bg px-4 py-4">
         <div className="mb-3">
           <SuggestionChips onSelect={handleSuggestionSelect} />
         </div>
 
-        <div className="relative rounded-[18px] border-[1.5px] border-[rgba(255,255,255,0.9)] bg-[rgba(255,255,255,0.8)] px-4 pb-3 pr-[52px] pt-3 shadow-[0_4px_24px_rgba(0,0,0,0.08)] backdrop-blur-[16px]">
+        <div className="relative rounded-lg border border-border bg-white px-4 pb-3 pr-[52px] pt-3 shadow-sm">
           <textarea
             ref={textareaRef}
             rows={2}
@@ -447,7 +447,7 @@ function SocratesPanelContent() {
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask Socrates..."
-            className="max-h-[104px] min-h-[38px] w-full resize-none bg-transparent pr-10 font-syne text-[13px] text-[#333333] outline-none"
+            className="max-h-[104px] min-h-[38px] w-full resize-none bg-transparent pr-10 font-sans text-[13px] text-textBody outline-none"
           />
 
           <motion.button
@@ -456,7 +456,7 @@ function SocratesPanelContent() {
             whileHover={{ scale: isStreaming ? 1 : 1.03 }}
             whileTap={{ scale: isStreaming ? 1 : 0.96 }}
             disabled={isStreaming}
-            className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#e8e8e2] text-[#1a1a1a] shadow-[0_6px_18px_rgba(0,0,0,0.12)] transition-colors hover:bg-[#ddddd6] disabled:cursor-not-allowed disabled:opacity-60"
+            className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-zinc-100 text-text1 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <TbArrowUp size={20} strokeWidth={1.6} />
           </motion.button>

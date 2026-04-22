@@ -29,7 +29,7 @@ const itemVariants = {
 
 function getMeetingDot(type: MeetingItem["type"]) {
   if (type === "standup") {
-    return "#00b4a0";
+    return "#111827";
   }
 
   if (type === "review") {
