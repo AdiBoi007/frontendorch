@@ -1,84 +1,11 @@
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarCard } from "../components/dashboard/CalendarCard";
-import Avatar from "../components/ui/Avatar";
-import { ArrowRightIcon, PlusIcon } from "../components/ui/AppIcons";
-import { Badge } from "../components/ui/Badge";
-import { mockCalendarEvents, mockProjects } from "../lib/mockData";
-import type { ProjectCardItem } from "../lib/types";
-
-const pageVariants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
-
-const childVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.35,
-      ease: [0.22, 1, 0.36, 1] as const
-    }
-  }
-};
-
-type TeamRole = "manager" | "dev" | "client";
-
-const teamMembers = [
-  { initials: "SC", role: "manager", name: "Sarah Chen" },
-  { initials: "MT", role: "dev", name: "Marcus T" },
-  { initials: "PK", role: "dev", name: "Priya K" },
-  { initials: "JW", role: "dev", name: "James W" },
-  { initials: "AP", role: "dev", name: "Alex P" },
-  { initials: "LF", role: "client", name: "Lisa F" }
-] as const satisfies ReadonlyArray<{ initials: string; role: TeamRole; name: string }>;
-
-const teamRoleStyles: Record<TeamRole, { background: string; color: string; label: string }> = {
-  manager: { background: "#eef2ff", color: "#4338ca", label: "Manager" },
-  dev: { background: "#f3f4f6", color: "#374151", label: "Dev" },
-  client: { background: "#fef3c7", color: "#92400e", label: "Client" }
-};
-
-const teamSplit = [
-  { label: "Managers 25%", color: "#6366f1", width: "25%" },
-  { label: "Devs 58%", color: "#374151", width: "58%" },
-  { label: "Clients 17%", color: "#d97706", width: "17%" }
-] as const;
-
-const avatarListVariants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.05
-    }
-  }
-};
-
-const avatarItemVariants = {
-  hidden: { opacity: 0, scale: 0 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: {
-      duration: 0.28,
-      ease: [0.22, 1, 0.36, 1] as const
-    }
-  }
-};
-
-function getViewerName() {
-  if (typeof window === "undefined") {
-    return "MANAGER";
-  }
-
-  return (window.localStorage.getItem("orchestra_role") ?? "manager").toUpperCase();
-}
+import { useAppShell } from "../context/AppShellContext";
+import { useSocrates } from "../context/SocratesContext";
+import { useAuth } from "../hooks/useAuth";
+import { apiGetGeneralDashboard, type GeneralDashboardPayload } from "../lib/api/dashboard";
+import { ApiError } from "../lib/http";
 
 function getTodayLabel() {
   return new Intl.DateTimeFormat("en-US", {
@@ -89,199 +16,163 @@ function getTodayLabel() {
   }).format(new Date());
 }
 
-function getHealthColor(health: ProjectCardItem["health"]) {
-  if (health === "HEALTHY") {
-    return "#374151";
-  }
-
-  if (health === "AT RISK") {
-    return "#f59340";
-  }
-
-  return "#e05555";
-}
-
-function TeamHeadcountCard() {
-  return (
-    <motion.section
-      whileHover={{
-        y: -2,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06)"
-      }}
-      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-      className="solid-card px-8 py-7"
-    >
-      <div className="flex flex-col gap-8 xl:flex-row xl:items-center xl:gap-10">
-        <div className="min-w-0 xl:w-[280px]">
-          <p className="mb-3 font-sans text-label font-semibold uppercase text-text2">Team</p>
-
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={avatarListVariants}
-            className="flex max-w-[280px] flex-wrap gap-2.5"
-          >
-            {teamMembers.map((member) => {
-              const style = teamRoleStyles[member.role];
-
-              return (
-                <motion.div
-                  key={member.initials}
-                  variants={avatarItemVariants}
-                  whileHover={{ scale: 1.15, zIndex: 10 }}
-                  title={`${member.name} · ${style.label}`}
-                  className="relative"
-                >
-                  <Avatar seed={member.initials} name={member.name} role={style.label} />
-                </motion.div>
-              );
-            })}
-
-            {Array.from({ length: 2 }).map((_, index) => (
-              <button
-                key={`open-slot-${index}`}
-                type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-border bg-transparent font-sans text-[18px] leading-none text-text3 transition-colors hover:border-text1 hover:text-text1"
-              >
-                <PlusIcon className="h-[18px] w-[18px]" />
-              </button>
-            ))}
-          </motion.div>
-        </div>
-
-        <div className="hidden w-px flex-shrink-0 self-stretch bg-[linear-gradient(to_bottom,transparent,var(--border)_20%,var(--border)_80%,transparent)] xl:block" />
-
-        <div className="flex min-w-0 flex-1 flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-8">
-            <div>
-              <p className="font-sans text-[32px] font-bold leading-none tracking-tight text-text1">6</p>
-              <p className="mt-1 font-sans text-meta text-text2">Active members</p>
-            </div>
-
-            <div>
-              <p className="font-sans text-[32px] font-bold leading-none tracking-tight text-indigo-600">2</p>
-              <p className="mt-1 font-sans text-meta text-text2">Open roles</p>
-            </div>
-          </div>
-
-          <div className="lg:ml-2">
-            <div className="flex h-2 w-[200px] overflow-hidden rounded-full">
-              {teamSplit.map((item) => (
-                <span key={item.label} style={{ width: item.width, backgroundColor: item.color }} />
-              ))}
-            </div>
-
-            <div className="mt-2 flex flex-wrap gap-3">
-              {teamSplit.map((item) => (
-                <div key={item.label} className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="font-sans text-[11px] text-text2">{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </motion.section>
-  );
-}
-
 export function DashboardPage() {
   const navigate = useNavigate();
-  const projects = mockProjects;
+  const { user } = useAuth();
+  const { projects } = useAppShell();
+  const { clearSelection } = useSocrates();
+  const [dashboard, setDashboard] = useState<GeneralDashboardPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    clearSelection();
+  }, [clearSelection]);
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const payload = await apiGetGeneralDashboard();
+        if (active) {
+          setDashboard(payload);
+        }
+      } catch (nextError) {
+        if (!active) {
+          return;
+        }
+        const message = nextError instanceof ApiError ? nextError.message : "Failed to load dashboard.";
+        setError(message);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="h-full overflow-y-auto bg-bg px-8 py-10">
+        <p className="font-sans text-docSm text-text2">Loading portfolio dashboard…</p>
+      </div>
+    );
+  }
+
+  if (error || !dashboard) {
+    return (
+      <div className="h-full overflow-y-auto bg-bg px-8 py-10">
+        <div className="max-w-[560px] rounded-lg border border-border bg-white p-8 shadow-sm">
+          <p className="font-sans text-label font-semibold uppercase text-text2">General dashboard</p>
+          <h1 className="mt-3 font-sans text-[30px] font-bold leading-tight tracking-tight text-text1">
+            Unable to load the portfolio view
+          </h1>
+          <p className="mt-3 font-sans text-docSm leading-6 text-textBody">
+            {error ?? "The dashboard data is unavailable right now."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div
-      initial="hidden"
-      animate="visible"
-      variants={pageVariants}
-      className="h-full overflow-y-auto bg-bg px-10 pb-10 pl-8 pt-10"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="h-full overflow-y-auto bg-bg px-8 pb-10 pt-10"
     >
-      <motion.section variants={childVariants} className="mb-10">
-        <motion.header className="flex items-start justify-between gap-6">
-          <div>
-            <p className="font-sans text-label font-semibold uppercase text-text2">Good morning</p>
-            <h1 className="mt-2 font-sans text-[36px] font-bold leading-tight tracking-tight text-text1 md:text-[40px]">
-              {getViewerName()}
-            </h1>
-            <p className="mt-2 font-sans text-docSm text-text2">{getTodayLabel()}</p>
+      <section className="mb-8">
+        <p className="font-sans text-label font-semibold uppercase text-text2">Good morning</p>
+        <h1 className="mt-2 font-sans text-[36px] font-bold leading-tight tracking-tight text-text1">
+          {user?.displayName ?? "there"}
+        </h1>
+        <p className="mt-2 font-sans text-docSm text-text2">{getTodayLabel()}</p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
+          <p className="font-sans text-label font-semibold uppercase text-text2">Active projects</p>
+          <p className="mt-3 font-sans text-[34px] font-bold text-text1">{dashboard.summary.activeProjectCount}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
+          <p className="font-sans text-label font-semibold uppercase text-text2">Org headcount</p>
+          <p className="mt-3 font-sans text-[34px] font-bold text-text1">{dashboard.summary.orgHeadcount}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
+          <p className="font-sans text-label font-semibold uppercase text-text2">Needs review</p>
+          <p className="mt-3 font-sans text-[34px] font-bold text-text1">{dashboard.summary.communication.needsReviewCount}</p>
+          <p className="mt-1 font-sans text-meta text-text2">communication insights</p>
+        </div>
+        <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
+          <p className="font-sans text-label font-semibold uppercase text-text2">Open decisions</p>
+          <p className="mt-3 font-sans text-[34px] font-bold text-text1">{dashboard.summary.changePressure.openDecisionCount}</p>
+        </div>
+      </section>
+
+      <section className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-sans text-label font-semibold uppercase text-text2">Accessible projects</p>
+              <p className="mt-1 font-sans text-docSm text-text2">Backed by `GET /v1/projects` and dashboard snapshots.</p>
+            </div>
+            <p className="font-mono text-[11px] text-text2">{projects.length} loaded</p>
           </div>
 
-          <motion.button
-            type="button"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            className="primary-button transition-opacity hover:opacity-90"
-          >
-            NEW PROJECT
-          </motion.button>
-        </motion.header>
-
-        <div className="mt-7 border-b border-border" />
-      </motion.section>
-
-      <motion.section variants={childVariants} className="mb-10">
-        <p className="mb-4 font-sans text-label font-semibold uppercase text-text2">Your projects</p>
-
-        <div className="grid gap-4 xl:grid-cols-3">
-          {projects.map((project, index) => {
-            const color = getHealthColor(project.health);
-
-            return (
-              <motion.button
-                key={project.id}
+          <div className="mt-5 space-y-3">
+            {dashboard.projects.map((project) => (
+              <button
+                key={project.projectId}
                 type="button"
-                onClick={() => navigate(`/projects/${project.id}`)}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                whileHover={{
-                  y: -2,
-                  borderColor: "#d1d5db",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)"
-                }}
-                className="rounded-lg border border-transparent bg-white px-7 py-6 text-left shadow-sm"
+                onClick={() => navigate(`/projects/${project.projectId}/dashboard`)}
+                className="flex w-full items-start justify-between gap-4 rounded-lg border border-border bg-bg px-4 py-4 text-left transition-colors hover:border-text1"
               >
-                <div className="flex items-start gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: project.color }} />
-                    <p className="truncate font-sans text-[16px] font-semibold text-text1">{project.name}</p>
-                  </div>
-                  <div className="ml-auto flex-shrink-0">
-                    <Badge variant={project.health} />
-                  </div>
+                <div className="min-w-0">
+                  <p className="truncate font-sans text-[16px] font-semibold text-text1">{project.name}</p>
+                  <p className="mt-1 font-sans text-docSm text-text2">
+                    {project.team.headcount} members · {project.documents.totalCount} docs · {project.communication.providerCount} providers
+                  </p>
+                  <p className="mt-2 font-sans text-meta text-textBody">{project.attention.reasons.slice(0, 2).join(" · ") || "Healthy"}</p>
                 </div>
-
-                <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-zinc-100">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${project.progress}%` }}
-                    transition={{ duration: 0.9, delay: 0.2 + index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                    className="h-full rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
+                <div className="flex-shrink-0 text-right">
+                  <p className="font-sans text-label font-semibold uppercase text-text2">{project.attention.label}</p>
+                  <p className="mt-1 font-mono text-[11px] text-text2">{project.movementLabel}</p>
                 </div>
-
-                <div className="mt-4 flex items-center">
-                  <p className="font-mono text-meta text-text2">{project.progress}%</p>
-                  <span className="ml-auto text-text1">
-                    <ArrowRightIcon className="h-[18px] w-[18px]" />
-                  </span>
-                </div>
-              </motion.button>
-            );
-          })}
+              </button>
+            ))}
+          </div>
         </div>
-      </motion.section>
 
-      <motion.div variants={childVariants} className="mb-10">
-        <TeamHeadcountCard />
-      </motion.div>
+        <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
+          <p className="font-sans text-label font-semibold uppercase text-text2">Role mix</p>
+          <div className="mt-4 space-y-3">
+            {Object.entries(dashboard.summary.orgRoleBreakdown).map(([role, count]) => (
+              <div key={role} className="flex items-center justify-between rounded-lg bg-bg px-4 py-3">
+                <p className="font-sans text-[13px] font-medium capitalize text-text1">{role}</p>
+                <p className="font-mono text-[12px] text-text2">{count}</p>
+              </div>
+            ))}
+          </div>
 
-      <motion.section variants={childVariants}>
-        <p className="mb-4 font-sans text-label font-semibold uppercase text-text2">Schedule</p>
-        <CalendarCard eventsByDate={mockCalendarEvents} />
-      </motion.section>
+          <p className="mt-6 font-sans text-label font-semibold uppercase text-text2">Brain freshness</p>
+          <div className="mt-4 space-y-3">
+            {Object.entries(dashboard.summary.brainFreshness).map(([state, count]) => (
+              <div key={state} className="flex items-center justify-between rounded-lg bg-bg px-4 py-3">
+                <p className="font-sans text-[13px] font-medium capitalize text-text1">{state}</p>
+                <p className="font-mono text-[12px] text-text2">{count}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </motion.div>
   );
 }

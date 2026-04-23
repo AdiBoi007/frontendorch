@@ -91,7 +91,7 @@ function getFilename(doc: Doc) {
 
 export function ProjectMemoryPage() {
   const navigate = useNavigate();
-  const { id = "1" } = useParams();
+  const { projectId } = useParams<{ projectId: string }>();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -107,7 +107,10 @@ export function ProjectMemoryPage() {
     let isCancelled = false;
 
     const load = async () => {
-      const docItems = await getDocs(id);
+      if (!projectId) {
+        return;
+      }
+      const docItems = await getDocs(projectId);
       if (isCancelled) {
         return;
       }
@@ -120,7 +123,7 @@ export function ProjectMemoryPage() {
     return () => {
       isCancelled = true;
     };
-  }, [id]);
+  }, [projectId]);
 
   const visibleDocs = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -172,7 +175,10 @@ export function ProjectMemoryPage() {
     }
 
     setIsUploading(true);
-    const nextDoc = await uploadDoc(id, selectedFile, selectedUploadType);
+    if (!projectId) {
+      return;
+    }
+    const nextDoc = await uploadDoc(projectId, selectedFile, selectedUploadType);
     setDocs((current) => [{ ...nextDoc }, ...current]);
     closeUploadModal();
   };
@@ -259,7 +265,7 @@ export function ProjectMemoryPage() {
                           roundedClass,
                           index > 0 ? "-mt-px" : ""
                         ].join(" ")}
-                        onClick={() => navigate(`/projects/${id}/docs/${doc.id}/view`)}
+                        onClick={() => projectId && navigate(`/projects/${projectId}/docs/${doc.id}/view`)}
                       >
                         <div className="flex items-start gap-4">
                           <div

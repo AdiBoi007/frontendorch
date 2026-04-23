@@ -3,9 +3,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import Avatar from "../components/ui/Avatar";
 import { ArrowRightIcon, GitBranchIcon, GitMergeIcon, UsersIcon } from "../components/ui/AppIcons";
+import { useSocrates } from "../context/SocratesContext";
+import { useParams } from "react-router-dom";
 import { getLiveDoc, saveLiveDocSection } from "../lib/api";
 import type { LiveDocComment, LiveDocPayload, LiveDocSection } from "../lib/types";
-import { useParams } from "react-router-dom";
 
 type SectionDrafts = Record<string, string>;
 type DiagramKey = "system" | "usecase" | "flowchart" | "sequence";
@@ -500,7 +501,8 @@ function CommentCard({
 }
 
 export function LiveDocPage() {
-  const { id = "1" } = useParams();
+  const { projectId } = useParams<{ projectId: string }>();
+  const { setSelection } = useSocrates();
   const [payload, setPayload] = useState<LiveDocPayload | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [drafts, setDrafts] = useState<SectionDrafts>({});
@@ -553,7 +555,10 @@ export function LiveDocPage() {
     let isCancelled = false;
 
     const load = async () => {
-      const nextPayload = await getLiveDoc(id);
+      if (!projectId) {
+        return;
+      }
+      const nextPayload = await getLiveDoc(projectId);
       if (isCancelled) {
         return;
       }
@@ -580,7 +585,7 @@ export function LiveDocPage() {
     return () => {
       isCancelled = true;
     };
-  }, [id]);
+  }, [projectId]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -611,6 +616,35 @@ export function LiveDocPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!payload) {
+      return;
+    }
+
+    if (!activeSection) {
+      setSelection({
+        selectedRefType: null,
+        selectedRefId: null,
+        viewerState: null,
+      });
+      return;
+    }
+
+    const section = payload.sections.find((item) => item.id === activeSection);
+    if (!section) {
+      return;
+    }
+
+    setSelection({
+      selectedRefType: "live_doc_section",
+      selectedRefId: section.id,
+      viewerState: {
+        sectionKey: section.id,
+        anchorId: section.anchorId,
+      },
+    });
+  }, [activeSection, payload, setSelection]);
+
   const handleSectionChange = (sectionId: string, content: string) => {
     setDrafts((current) => ({
       ...current,
@@ -625,7 +659,11 @@ export function LiveDocPage() {
     }
 
     const nextContent = sectionValue(section, drafts);
-    await saveLiveDocSection(id, sectionId, nextContent);
+    if (!projectId) {
+      return;
+    }
+
+    await saveLiveDocSection(projectId, sectionId, nextContent);
 
     setPayload((current) => {
       if (!current) {

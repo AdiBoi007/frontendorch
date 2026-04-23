@@ -1,67 +1,55 @@
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRightIcon, CodeIcon, EyeIcon, UserIcon } from "../components/ui/AppIcons";
-import { getLoginRoles } from "../lib/api";
-import type { RoleOption } from "../lib/types";
+import { useAuth } from "../hooks/useAuth";
+import { ApiError } from "../lib/http";
 
 const cardTransition = {
   duration: 0.4,
   ease: [0.22, 1, 0.36, 1] as const
 };
 
-const listVariants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.08,
-      delayChildren: 0.12
-    }
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 14 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.3,
-      ease: [0.22, 1, 0.36, 1] as const
-    }
-  }
-};
-
-const iconByRole: Record<RoleOption["icon"], JSX.Element> = {
-  briefcase: <UserIcon className="h-[18px] w-[18px]" />,
-  code: <CodeIcon className="h-[18px] w-[18px]" />,
-  eye: <EyeIcon className="h-[18px] w-[18px]" />
-};
+type Mode = "login" | "signup";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
+  const { login, signup } = useAuth();
 
-  useEffect(() => {
-    let active = true;
+  const [mode, setMode] = useState<Mode>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [orgName, setOrgName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-    const loadRoles = async () => {
-      const roles = await getLoginRoles();
-      if (active) {
-        setRoleOptions(roles);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      if (mode === "login") {
+        await login(email, password);
+      } else {
+        await signup(orgName, email, password, displayName);
       }
-    };
-
-    void loadRoles();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const handleRoleSelect = (role: RoleOption["key"]) => {
-    localStorage.setItem("orchestra_role", role);
-    navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 401 || err.code === "invalid_credentials") {
+          setError("Incorrect email or password.");
+        } else if (err.code === "user_exists") {
+          setError("An account with this email already exists.");
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -74,33 +62,117 @@ export function LoginPage() {
       >
         <div className="text-center">
           <p className="font-sans text-label font-semibold uppercase text-text2">Orchestra</p>
-          <h1 className="mt-3 font-sans text-[28px] font-bold leading-tight tracking-tight text-text1">Sign in</h1>
+          <h1 className="mt-3 font-sans text-[28px] font-bold leading-tight tracking-tight text-text1">
+            {mode === "login" ? "Sign in" : "Create account"}
+          </h1>
           <p className="mt-2 font-sans text-docSm text-text2">Your product brain.</p>
         </div>
 
-        <div className="mt-10">
-          <p className="mb-3 font-sans text-label font-semibold uppercase text-text2">Continue as</p>
+        <form onSubmit={(e) => void handleSubmit(e)} className="mt-10 space-y-4">
+          {mode === "signup" && (
+            <>
+              <div>
+                <label className="mb-1 block font-sans text-label font-semibold uppercase text-text2">
+                  Organisation name
+                </label>
+                <input
+                  type="text"
+                  required
+                  minLength={2}
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  placeholder="Acme Corp"
+                  className="h-[48px] w-full rounded-lg border border-border bg-white px-4 font-sans text-[14px] text-text1 outline-none focus:border-text1"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block font-sans text-label font-semibold uppercase text-text2">
+                  Your name
+                </label>
+                <input
+                  type="text"
+                  required
+                  minLength={2}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Jane Smith"
+                  className="h-[48px] w-full rounded-lg border border-border bg-white px-4 font-sans text-[14px] text-text1 outline-none focus:border-text1"
+                />
+              </div>
+            </>
+          )}
 
-          <motion.div initial="hidden" animate="visible" variants={listVariants} className="space-y-2">
-            {roleOptions.map((role) => (
-              <motion.button
-                key={role.key}
+          <div>
+            <label className="mb-1 block font-sans text-label font-semibold uppercase text-text2">
+              Email
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="h-[48px] w-full rounded-lg border border-border bg-white px-4 font-sans text-[14px] text-text1 outline-none focus:border-text1"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block font-sans text-label font-semibold uppercase text-text2">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Min 8 characters"
+              className="h-[48px] w-full rounded-lg border border-border bg-white px-4 font-sans text-[14px] text-text1 outline-none focus:border-text1"
+            />
+          </div>
+
+          {error && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 font-sans text-[13px] text-red-700">
+              {error}
+            </p>
+          )}
+
+          <motion.button
+            type="submit"
+            disabled={loading}
+            whileHover={{ scale: loading ? 1 : 1.01 }}
+            whileTap={{ scale: loading ? 1 : 0.99 }}
+            className="mt-2 flex h-[48px] w-full items-center justify-center rounded-lg bg-text1 font-sans text-[14px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+          </motion.button>
+        </form>
+
+        <p className="mt-6 text-center font-sans text-docSm text-text2">
+          {mode === "login" ? (
+            <>
+              No account?{" "}
+              <button
                 type="button"
-                variants={itemVariants}
-                whileHover={{ scale: 1.005 }}
-                whileTap={{ scale: 0.995 }}
-                onClick={() => handleRoleSelect(role.key)}
-                className="group flex h-[52px] w-full items-center justify-between rounded-lg border border-border bg-white px-4 transition-colors duration-200 hover:border-text1"
+                onClick={() => { setMode("signup"); setError(null); }}
+                className="font-semibold text-text1 underline underline-offset-2"
               >
-                <span className="flex w-8 items-center justify-start text-text2 group-hover:text-text1">{iconByRole[role.icon]}</span>
-                <span className="font-sans text-[15px] font-semibold text-text1">{role.label}</span>
-                <span className="flex w-8 justify-end text-text3 transition-colors duration-200 group-hover:text-text1">
-                  <ArrowRightIcon className="h-[18px] w-[18px]" />
-                </span>
-              </motion.button>
-            ))}
-          </motion.div>
-        </div>
+                Create one
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{" "}
+              <button
+                type="button"
+                onClick={() => { setMode("login"); setError(null); }}
+                className="font-semibold text-text1 underline underline-offset-2"
+              >
+                Sign in
+              </button>
+            </>
+          )}
+        </p>
       </motion.section>
     </main>
   );

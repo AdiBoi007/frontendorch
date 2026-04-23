@@ -15,7 +15,9 @@ import {
   MessageSquareIcon,
   UsersIcon
 } from "../components/ui/AppIcons";
-import { mockProjectBrains, mockProjects } from "../lib/mockData";
+import { useAppShell } from "../context/AppShellContext";
+import { useSocrates } from "../context/SocratesContext";
+import { mockProjectBrains } from "../lib/mockData";
 import type { BrainCategoryId, BrainDetailItem, BrainIconKey, BrainNodeData } from "../lib/types";
 
 type CanvasSize = {
@@ -379,13 +381,15 @@ function isUploadableCategory(category: BrainCategoryId | null): category is Exc
 
 export function ProjectBrainPage() {
   const navigate = useNavigate();
-  const { id = "1" } = useParams();
+  const { projectId } = useParams<{ projectId: string }>();
+  const { activeProject } = useAppShell();
+  const { clearSelection } = useSocrates();
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragDistanceRef = useRef<Record<string, number>>({});
   const hasAnimated = useRef(false);
 
-  const project = mockProjects.find((item) => item.id === id) ?? mockProjects[0];
-  const brainSeed = mockProjectBrains[id] ?? mockProjectBrains["1"];
+  const projectName = activeProject?.name ?? "Project";
+  const brainSeed = (projectId && mockProjectBrains[projectId]) ? mockProjectBrains[projectId] : mockProjectBrains[Object.keys(mockProjectBrains)[0]];
 
   const [canvasSize, setCanvasSize] = useState<CanvasSize>(() => getInitialCanvasSize());
   const [nodes, setNodes] = useState<BrainNodeData[]>(() => createVisualNodes(brainSeed.nodes));
@@ -401,6 +405,10 @@ export function ProjectBrainPage() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedUploadType, setSelectedUploadType] = useState<UploadTypeId>("prd");
   const [uploadName, setUploadName] = useState("");
+
+  useEffect(() => {
+    clearSelection();
+  }, [clearSelection]);
 
   useEffect(() => {
     const nextNodes = createVisualNodes(brainSeed.nodes);
@@ -543,12 +551,16 @@ export function ProjectBrainPage() {
     setSelectedDetailId(item.id);
 
     if (item.action === "navigate-docs") {
-      navigate(`/projects/${project.id}/docs`);
+      if (projectId) {
+        navigate(`/projects/${projectId}/memory`);
+      }
       return;
     }
 
     if (item.action === "navigate-requests") {
-      navigate(`/projects/${project.id}/requests`);
+      if (projectId) {
+        navigate(`/projects/${projectId}/requests`);
+      }
     }
   };
 
@@ -699,7 +711,7 @@ export function ProjectBrainPage() {
             <ArrowLeftIcon className="h-4 w-4" />
           </button>
           <span className="mx-4 h-4 w-px bg-[#e5e5e0]" />
-          <p className="font-bebas text-[15px] text-[#0a0a0a]">{project.name.toUpperCase()}</p>
+          <p className="font-bebas text-[15px] text-[#0a0a0a]">{projectName.toUpperCase()}</p>
           <span className="mx-2 font-syne text-[13px] text-[#cccccc]">/</span>
           <p className="font-bebas text-[12px] tracking-[0.12em] text-[#111827]">BRAIN</p>
         </div>

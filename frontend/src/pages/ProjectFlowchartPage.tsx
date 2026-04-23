@@ -17,6 +17,7 @@ import {
   ZoomInIcon,
   ZoomOutIcon
 } from "../components/ui/AppIcons";
+import { useSocrates } from "../context/SocratesContext";
 import { getFlowGraph, getProjects } from "../lib/api";
 import type { FlowEdge, FlowGraph, FlowNode } from "../lib/types";
 
@@ -197,7 +198,8 @@ function getBezierMidpoint(
 
 export function ProjectFlowchartPage() {
   const navigate = useNavigate();
-  const { id = "1" } = useParams();
+  const { projectId } = useParams<{ projectId: string }>();
+  const { setSelection } = useSocrates();
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const initializedViewportRef = useRef(false);
   const panAnchorRef = useRef<Point>({ x: 0, y: 0 });
@@ -219,12 +221,15 @@ export function ProjectFlowchartPage() {
     let isCancelled = false;
 
     const load = async () => {
-      const [projects, flowGraph] = await Promise.all([getProjects(), getFlowGraph(id)]);
+      if (!projectId) {
+        return;
+      }
+      const [projects, flowGraph] = await Promise.all([getProjects(), getFlowGraph(projectId)]);
       if (isCancelled) {
         return;
       }
 
-      const project = projects.find((item) => item.id === id) ?? projects[0];
+      const project = projects.find((item) => item.id === projectId) ?? projects[0];
       setProjectName(project?.name ?? "PROJECT");
       setGraph(flowGraph);
       setNodePositions(buildNodePositions(flowGraph.nodes));
@@ -237,7 +242,7 @@ export function ProjectFlowchartPage() {
     return () => {
       isCancelled = true;
     };
-  }, [id]);
+  }, [projectId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -302,6 +307,23 @@ export function ProjectFlowchartPage() {
   }, [isPanning]);
 
   const selectedNode = useMemo(() => graph?.nodes.find((node) => node.id === selectedNodeId) ?? null, [graph, selectedNodeId]);
+
+  useEffect(() => {
+    if (selectedNodeId) {
+      setSelection({
+        selectedRefType: "brain_node",
+        selectedRefId: selectedNodeId,
+        viewerState: null,
+      });
+      return;
+    }
+
+    setSelection({
+      selectedRefType: null,
+      selectedRefId: null,
+      viewerState: null,
+    });
+  }, [selectedNodeId, setSelection]);
 
   const nodeMap = useMemo(() => new Map(graph?.nodes.map((node) => [node.id, node]) ?? []), [graph]);
 

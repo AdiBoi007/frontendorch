@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeftIcon, CloseIcon, FileTextIcon } from "../components/ui/AppIcons";
+import { useSocrates } from "../context/SocratesContext";
 import { getAnchorProvenance, getDocViewer, getProjects } from "../lib/api";
 import type { AnchorProvenance, DocSection, DocViewerPayload } from "../lib/types";
 
@@ -85,7 +86,8 @@ function sectionValue(section: DocSection, drafts: SectionDrafts) {
 
 export function LiveDocViewerPage() {
   const navigate = useNavigate();
-  const { id = "1", docId = "1" } = useParams();
+  const { projectId, docId } = useParams<{ projectId: string; docId: string }>();
+  const { setSelection } = useSocrates();
   const provenanceRequestRef = useRef(0);
 
   const [projectName, setProjectName] = useState("PROJECT");
@@ -100,12 +102,15 @@ export function LiveDocViewerPage() {
     let isCancelled = false;
 
     const load = async () => {
-      const [projects, payload] = await Promise.all([getProjects(), getDocViewer(id, docId)]);
+      if (!projectId || !docId) {
+        return;
+      }
+      const [projects, payload] = await Promise.all([getProjects(), getDocViewer(projectId, docId)]);
       if (isCancelled) {
         return;
       }
 
-      const project = projects.find((item) => item.id === id) ?? projects[0];
+      const project = projects.find((item) => item.id === projectId) ?? projects[0];
       setProjectName(project?.name ?? "PROJECT");
       setViewer(payload);
       setSelectedAnchor(null);
@@ -119,7 +124,7 @@ export function LiveDocViewerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [docId, id]);
+  }, [docId, projectId]);
 
   useEffect(() => {
     if (!selectedAnchor) {
@@ -133,7 +138,10 @@ export function LiveDocViewerPage() {
     setIsLoadingProvenance(true);
 
     const load = async () => {
-      const payload = await getAnchorProvenance(id, docId, selectedAnchor);
+      if (!projectId || !docId) {
+        return;
+      }
+      const payload = await getAnchorProvenance(projectId, docId, selectedAnchor);
       if (provenanceRequestRef.current !== requestId) {
         return;
       }
@@ -143,12 +151,36 @@ export function LiveDocViewerPage() {
     };
 
     void load();
-  }, [docId, id, selectedAnchor]);
+  }, [docId, projectId, selectedAnchor]);
 
   const activeSection = useMemo(
     () => viewer?.sections.find((section) => section.anchorId === selectedAnchor) ?? null,
     [selectedAnchor, viewer]
   );
+
+  useEffect(() => {
+    if (!docId) {
+      return;
+    }
+
+    if (!activeSection) {
+      setSelection({
+        selectedRefType: "document",
+        selectedRefId: docId,
+        viewerState: { documentId: docId },
+      });
+      return;
+    }
+
+    setSelection({
+      selectedRefType: "document_section",
+      selectedRefId: activeSection.id,
+      viewerState: {
+        documentId: docId,
+        anchorId: activeSection.anchorId,
+      },
+    });
+  }, [activeSection, docId, setSelection]);
 
   const handleSectionChange = (sectionId: string, value: string) => {
     setDrafts((current) => ({

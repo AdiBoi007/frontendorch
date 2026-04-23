@@ -1,17 +1,17 @@
-import { useParams } from "react-router-dom";
-import { mockProjects, mockRequests } from "../lib/mockData";
+import { mockRequests } from "../lib/mockData";
+import { useAppShell } from "../context/AppShellContext";
 
 export function ProjectRequestsPage() {
-  const { id = "1" } = useParams();
-  const project = mockProjects.find((item) => item.id === id) ?? mockProjects[0];
-  const projectToken = project.name.split(" ")[0];
+  const { activeProject } = useAppShell();
+  const projectName = activeProject?.name ?? "Project";
+  const projectToken = projectName.split(" ")[0];
   const requests = mockRequests.filter((item) => item.from.includes(projectToken) || item.message.includes(projectToken));
 
   return (
     <section className="h-full overflow-y-auto bg-bg px-8 py-10">
       <div className="mb-8">
         <p className="font-bebas text-[12px] tracking-[0.18em] text-[#111827]">REQUESTS</p>
-        <h1 className="mt-2 font-bebas text-[48px] leading-none text-[#0a0a0a]">{project.name.toUpperCase()}</h1>
+        <h1 className="mt-2 font-bebas text-[48px] leading-none text-[#0a0a0a]">{projectName.toUpperCase()}</h1>
         <p className="mt-2 font-syne text-[14px] text-[#888888]">Communication and change requests linked to this project.</p>
       </div>
 
