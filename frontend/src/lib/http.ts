@@ -50,6 +50,40 @@ async function refreshAccessToken(): Promise<string> {
   return _refreshPromise;
 }
 
+// Upload variant: does NOT set Content-Type so the browser sets multipart/form-data boundary automatically.
+export async function apiUploadFetch<T>(path: string, formData: FormData): Promise<T> {
+  const headers = new Headers();
+  const at = getAccessToken();
+  if (at) headers.set("Authorization", `Bearer ${at}`);
+
+  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: formData });
+
+  if (res.status === 401) {
+    let newAt: string;
+    try {
+      newAt = await refreshAccessToken();
+    } catch {
+      clearTokens();
+      window.dispatchEvent(new CustomEvent("orchestra:auth-expired"));
+      throw new ApiError(401, "session_expired", "Session expired");
+    }
+    headers.set("Authorization", `Bearer ${newAt}`);
+    const retried = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: formData });
+    if (!retried.ok) {
+      const body = (await retried.json().catch(() => ({}))) as { error?: { code: string; message: string } };
+      throw new ApiError(retried.status, body.error?.code ?? "upload_failed", body.error?.message ?? "Upload failed");
+    }
+    return (await retried.json()) as T;
+  }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: { code: string; message: string } };
+    throw new ApiError(res.status, body.error?.code ?? "upload_failed", body.error?.message ?? "Upload failed");
+  }
+
+  return (await res.json()) as T;
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");

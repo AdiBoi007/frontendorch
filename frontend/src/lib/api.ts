@@ -1,5 +1,6 @@
 import * as mock from "./mockData";
 import { apiGetProject, apiGetProjectMembers, apiListProjects } from "./api/projects";
+import { apiListDocuments, apiUploadDocument } from "./api/documents";
 import type {
   AnchorProvenance,
   ChatMessage,
@@ -78,27 +79,16 @@ export const getProjectMembers = async (projectId: string): Promise<ProjectMembe
   }));
 };
 
-// TODO: replace with GET /v1/projects/:projectId/documents
 export const getDocs = async (projectId: string): Promise<Doc[]> => {
-  void projectId;
-  return mock.mockDocs;
+  const { items } = await apiListDocuments(projectId);
+  return items;
 };
 
-// TODO: replace with POST /v1/projects/:projectId/documents/upload
-export const uploadDoc = async (projectId: string, file: File, type: string): Promise<Doc> => {
-  void projectId;
-
-  return {
-    id: Date.now().toString(),
-    name: file.name,
-    type: type as Doc["type"],
-    size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-    pages: 1,
-    status: "processing",
-    uploadedBy: "SC",
-    uploadedAt: "Just now",
-    excerpt: "Processing document..."
-  };
+export const uploadDoc = async (
+  projectId: string,
+  formData: FormData
+): Promise<{ documentId: string; documentVersionId: string; status: Doc["parseStatus"] }> => {
+  return apiUploadDocument(projectId, formData);
 };
 
 // TODO: replace mock with real fetch when backend ready
