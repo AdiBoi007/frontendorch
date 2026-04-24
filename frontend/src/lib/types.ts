@@ -79,46 +79,19 @@ export interface ProjectDetail {
   docsReady: number;
 }
 
-// ── Document types (aligned with backend DocumentItem / DocumentDetail) ────────
-
-export type DocumentKind =
-  | "prd"
-  | "srs"
-  | "meeting_note"
-  | "call_note"
-  | "reference"
-  | "internal_note"
-  | "other";
-
-export type DocumentParseStatus = "pending" | "processing" | "ready" | "partial" | "failed";
-
-export type DocumentVisibility = "internal" | "shared_with_client";
-
-export interface DocumentVersionSummary {
-  id: string;
-  status: DocumentParseStatus;
-  parseRevision: number;
-  parseConfidence: number | null;
-  sourceLabel: string | null;
-  createdAt: string;
-  processedAt: string | null;
-  isCurrent: boolean;
-}
-
 export interface Doc {
   id: string;
-  projectId: string;
-  title: string;
-  kind: DocumentKind;
-  visibility: DocumentVisibility;
-  createdAt: string;
-  updatedAt: string;
-  parseStatus: DocumentParseStatus | null;
-  lastProcessedAt: string | null;
-  currentVersion: DocumentVersionSummary | null;
+  name: string;
+  type: "prd" | "srs" | "spec" | "transcript" | "audio" | "image" | "change" | "decision";
+  size: string;
+  pages: number;
+  status: "ready" | "processing" | "failed";
+  uploadedBy: string;
+  uploadedAt: string;
+  excerpt: string;
 }
 
-export type DocFilter = "all" | DocumentKind;
+export type DocFilter = "all" | "prd" | "srs" | "spec" | "transcript" | "audio" | "image" | "change" | "decision";
 
 export interface FlowNode {
   id: string;
